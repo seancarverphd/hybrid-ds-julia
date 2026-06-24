@@ -269,7 +269,7 @@ Primary role: provide an advanced test case that pushes beyond impulsive treatme
   - selective stochastic or Filippov extensions where they genuinely add insight.
 - Revisit licensing and packaging based on feedback and collaboration opportunities.
 
-Primary outcome: a research-grade, hiring-facing codebase that clearly showcases hybrid dynamical-systems methods applied to problems that matter in QSP and mechanistic pharmacology.
+Primary outcome: a research-grade codebase that clearly showcases hybrid dynamical-systems methods applied to problems that matter in QSP and mechanistic pharmacology.
 
 ## Licensing and IP posture
 
@@ -277,7 +277,7 @@ This repository is currently marked **“All rights reserved.”** In practical 
 
 That posture is **provisional rather than permanent**. The goal is to keep IP options open so that future collaborators or an employer can help determine the most appropriate long-term model—whether that is an internal company library, a company-backed open-source project, or a hybrid arrangement that balances community access with strategic needs.
 
-The directional preference is toward an eventual open-source model once a stable institutional home and governance structure are in place, but for now the repository is public for visibility and discussion while the IP remains flexible.
+The directional preference is toward an eventual open-source model once a stable institutional home and governance structure are in place, but for now the repository is public for visibility and discussion while the IP remains flexible and the codebase continues to evolve.
 
 ## Further reading
 
