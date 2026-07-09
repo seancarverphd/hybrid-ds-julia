@@ -8,6 +8,8 @@ Many pharmacology models are treated numerically as if they were globally smooth
 
 This project aims to make those methods more usable in domain-facing workflows. The goal is not to rebuild low-level solver infrastructure from scratch, but to build a practical layer on top of Julia’s scientific-computing ecosystem that helps modelers work more effectively with trajectories that cross many events and decision boundaries.
 
+The near-term goal is a compact deterministic core with one flagship biomedical example.
+
 ## Why this matters
 
 This project is deliberately positioned at the interface of **mechanistic pharmacology**, **QSP**, and **PK/PD-driven translational decision-making**.
@@ -41,13 +43,13 @@ Representative examples include:
 
 These are exactly the kinds of systems in which a model can remain continuous in state while its governing equations change at event times. That structure suggests event-aware simulation, variational sensitivity propagation, multiple shooting, and automatic differentiation rather than treating the full trajectory as if it were globally smooth.
 
-## Original crop-science motivation
+## Current direction
 
-The immediate technical motivation came from the multiscale bambara groundnut model of Dodd et al., which couples plant-level ODEs to canopy-level competition.
+The immediate focus is to turn the current mathematical and conceptual foundation into a small but credible research platform by implementing a narrow deterministic core and one flagship biomedical example. The package will be strongest if its first public milestones are reproducible, technically convincing, and clearly tied to end-to-end event-aware workflows.
 
-In that model, each plant evolves according to nonlinear growth equations, while changing interaction structure determines local competition and ultimately influences yield. When the active interaction structure is fixed, the model evolves smoothly; when a new interaction becomes active, trajectories remain continuous but growth rates change abruptly. That makes the full coupled system a natural example of a **hybrid dynamical system** rather than a globally smooth ODE.
+## Current status
 
-The analogy to pharmacology is direct: canopy occlusion changes local growth rates in much the same way that dosing rules, toxicity thresholds, or therapy switches change the effective dynamics in QSP models. Different scientific domain, same underlying mathematical issue of event-triggered changes in structure.
+The repository currently functions primarily as a conceptual and methodological foundation for the package. The next implementation targets are a deterministic hybrid core, a fully worked flagship biomedical example, and accompanying documentation that shows the workflow from model specification through simulation, sensitivities, and schedule- or parameter-facing analysis.
 
 ## Mathematical approach
 
@@ -121,7 +123,7 @@ In event-driven, high-dimensional mechanistic models, this is especially valuabl
 
 The first biomedical model planned for this workflow is the hybrid impulsive tumor–immune model with immunotherapy and chemotherapy studied in *[Analysis of a Hybrid Impulsive Tumor-Immune Model with Immunotherapy and Chemotherapy](https://www.sciencedirect.com/science/article/abs/pii/S0960077920310080)*.
 
-This is a strong first biomedical target because the hybrid structure is not incidental: treatment is represented through pulsed interventions of different frequencies, so the long-term behavior depends directly on event timing, treatment scheduling, and the interaction between continuous tumor–immune dynamics and impulsive updates. From a pharmacology and QSP perspective, it sits close to questions decision-makers care about: how treatment frequency, timing, and combination strategy influence tumor control.
+This model is intended to serve as the flagship early implementation target for the package, not just as a motivating example. It is a strong first biomedical target because the hybrid structure is not incidental: treatment is represented through pulsed interventions of different frequencies, so the long-term behavior depends directly on event timing, treatment scheduling, and the interaction between continuous tumor–immune dynamics and impulsive updates. From a pharmacology and QSP perspective, it sits close to questions decision-makers care about: how treatment frequency, timing, and combination strategy influence tumor control.
 
 ### Bayesian and stochastic extensions
 
@@ -147,9 +149,9 @@ The same mathematical and computational ideas can be used across a range of mech
 
 Many QSP and PK/PD models already contain hybrid structure in practice: dosing pulses, treatment holidays, state-dependent interventions, switching therapies, toxicity holds, and threshold-mediated biological responses. A package like `hybrid-ds-julia` is intended to make event-aware simulation, variational sensitivity propagation, and multiple shooting natural parts of the workflow for these models.
 
-That would make it easier to study not only how strongly a drug acts, but how the timing and logic of interventions shape long-term outcomes such as remission, relapse, resistance, or sustained control. It also opens the door to more systematic optimization over dose, timing, and treatment rules rather than relying only on hand-picked regimen comparisons.
+That would make it easier to study how the timing and logic of interventions shape long-term outcomes such as remission, relapse, resistance, or sustained control. It also opens the door to more systematic optimization over dose, timing, and treatment rules rather than relying only on hand-picked regimen comparisons.
 
-### Mechanistic pharmacology and translational strategy
+### Translational pharmacology
 
 Many of the most important translational questions are inherently dynamical: whether a schedule sustains control, whether biomarker trajectories indicate a regime shift, or whether a mechanism remains effective under realistic interruptions or patient heterogeneity.
 
@@ -173,6 +175,14 @@ Although the primary intended destination of the package is pharmacology, the or
 
 Crop science is therefore not the main target for the package, but it remains an instructive example of why such a package could be useful.
 
+## Original crop-science motivation
+
+The immediate technical motivation came from the multiscale bambara groundnut model of Dodd et al., which couples plant-level ODEs to canopy-level competition.
+
+In that model, each plant evolves according to nonlinear growth equations, while changing interaction structure determines local competition and ultimately influences yield. When the active interaction structure is fixed, the model evolves smoothly; when a new interaction becomes active, trajectories remain continuous but growth rates change abruptly. That makes the full coupled system a natural example of a **hybrid dynamical system** rather than a globally smooth ODE.
+
+The analogy to pharmacology is direct: canopy occlusion changes local growth rates in much the same way that dosing rules, toxicity thresholds, or therapy switches change the effective dynamics in QSP models. Different scientific domain, same underlying mathematical issue of event-triggered changes in structure.
+
 ## Software plan
 
 Planned implementation details include:
@@ -187,89 +197,80 @@ Related Julia ecosystem tools and references:
 
 - **[`BifurcationKit.jl`](https://github.com/bifurcationkit/BifurcationKit.jl)** — Julia tooling for bifurcation analysis.
 - **[`DynamicalSystems.jl`](https://github.com/JuliaDynamics/DynamicalSystems.jl)** — JuliaDynamics library for nonlinear dynamics and time-series analysis.
+- **[`HybridSystems.jl`](https://github.com/blegat/HybridSystems.jl)** — a general Julia interface for hybrid systems and hybrid automata, relevant as ecosystem context even though `hybrid-ds-julia` is intended to emphasize event-aware simulation, sensitivities, and optimization for mechanistic QSP and PK/PD models.
 
 ## Roadmap
 
-The project is organized in stages, from a minimal deterministic core toward more advanced stochastic and Filippov extensions.
+The project is organized in stages, moving from a minimal deterministic hybrid core toward QSP-facing workflows, selected stochastic extensions, and more demanding non-smooth benchmarks.
 
-### Stage 1 — Deterministic hybrid core
+### Stage 1 — Narrow deterministic core
 
 - Implement a minimal Julia package skeleton with tests and documentation.
-- Represent hybrid / impulsive systems with:
+- Represent hybrid and impulsive systems with:
   - smooth ODE flows between events,
   - explicit jump maps at dose times,
   - and event surfaces for state-triggered interventions.
-- Integrate reverse-mode automatic differentiation (e.g., via `ReverseDiff.jl`) for:
+- Implement variational-equation propagation for piecewise-smooth and impulsive models, including sensitivity updates across jumps.
+- Integrate automatic differentiation for:
   - vector-field Jacobians,
   - jump-map Jacobians,
   - and gradients of scalar objectives.
-- Implement variational-equation propagation for piecewise-smooth and impulsive models, including sensitivity updates across jumps.
 - Add multiple-shooting support across event-defined segments.
 
-Primary target: a Pang-style pulsed tumor–immune treatment model, used as a proof-of-concept for event-aware simulation, sensitivities, and multiple shooting in a QSP-aligned example.
+Primary outcome: a small, reliable deterministic core that already demonstrates the central mathematical identity of the package.
 
-### Stage 2 — QSP-facing workflows
+### Stage 2 — Flagship biomedical workflow
 
-- Build a small library of low-dimensional hybrid treatment models:
-  - pulsed immunotherapy and chemotherapy,
-  - simple autoimmune / inflammatory disease models with flare–remission dynamics and rescue therapy.
-- Demonstrate schedule-dependence workflows:
-  - continuing solutions across dose/timing parameters,
-  - analyzing regime changes (e.g., elimination, control, relapse),
-  - exploring robustness of outcomes to small changes in event logic.
-- Integrate with existing QSP/PK–PD tools (SciML, Optimization.jl) for:
-  - parameter estimation,
-  - basic schedule optimization,
-  - and virtual-patient style parameter explorations.
+- Develop one fully documented flagship biomedical example centered on hybrid tumor-immune treatment dynamics.
+- Show the full workflow from model definition to event-aware simulation, sensitivity propagation, and schedule- or parameter-facing analysis.
+- Use the example as a tutorial, benchmark, and proof-of-concept for clinically meaningful event-driven modeling questions.
+- Add tests and reproducible scripts so the example also serves as a numerical validation target.
 
-Primary audience: QSP and PK/PD practitioners interested in hybrid and event-rich mechanisms but still working with relatively low-dimensional models.
+Primary outcome: a compact end-to-end demonstration stack that makes the package credible to both hybrid-systems and pharmacology audiences.
 
-### Stage 3 — Bayesian and stochastic extensions
+### Stage 3 — QSP-facing workflows
 
-- Prototype stochastic extensions of the deterministic hybrid models:
-  - additive or multiplicative noise in tumor/immune or PK states,
-  - simple stochastic hybrid structures (e.g., regime switching).
-- Provide event-aware SDE simulation for hybrid models:
-  - SDE integration between events,
-  - jumps and regime changes at predictable and/or state-dependent times.
-- Connect hybrid simulation to Bayesian workflows:
-  - define likelihood increments from ODE/SDE trajectories between observation times,
-  - support sequential Bayesian updating where each posterior becomes the next prior,
-  - integrate with external MCMC / SMC tools for parameter and schedule inference.
-- Explore sensitivity-aware inference:
-  - use variational / AD-based sensitivities where feasible to support gradient-based Bayesian or variational methods.
+- Build convenience abstractions for repeated dosing, treatment holidays, toxicity holds, rescue interventions, and therapy switching.
+- Add objective functions and workflows for schedule comparison, schedule optimization, and event-aware parameter estimation.
+- Support virtual-patient style parameter exploration and uncertainty analysis in event-rich mechanistic models.
+- Improve ergonomics so the package helps answer pharmacology questions that are decision-facing rather than purely mathematical.
 
-Primary goal: show how hybrid-ds-julia can underpin Bayesian QSP/PK–PD workflows, especially when event structure and treatment logic need to be explicitly represented in the likelihood.
+Primary outcome: a package that begins to look like useful QSP and PK/PD workflow infrastructure rather than only a mathematical prototype.
 
-### Stage 4 — Filippov and sliding dynamics
+### Stage 4 — Stochastic and Bayesian extensions
 
-- Implement a planar Filippov benchmark with:
-  - discontinuous vector fields across a switching surface,
-  - crossing, sticking, and sliding regimes.
-- Extend event-aware integration to handle:
-  - detection of switching-surface crossings,
-  - construction of Filippov convex combinations for sliding dynamics,
-  - basic detection of boundary equilibria and pseudo-Hopf–type phenomena.
-- Use the benchmark as a numerical testbed for:
-  - continuation of sliding orbits,
-  - discontinuity-induced bifurcations,
-  - and robustness of numerical methods under non-smooth dynamics.
+- Identify one stochastic hybrid model class that is genuinely relevant for pharmacology.
+- Provide a clean event-aware simulation interface for that class, including jumps or regime changes at predictable or state-dependent times.
+- Connect that simulation layer to one concrete inference workflow, such as sequential Bayesian updating or particle-based likelihood evaluation.
+- Explore sensitivity-aware inference only where the deterministic abstractions are already robust enough to support it.
 
-Primary role: provide an advanced test case that pushes beyond impulsive treatment models into discontinuous vector fields and sliding motion.
+Primary outcome: a staged stochastic extension that broadens the package without diluting its core design.
 
-### Stage 5 — Refinement and specialization
+### Stage 5 — Filippov and benchmark suite
 
-- Harden numerics (step-size control, event-detection tolerances, sensitivity robustness).
-- Improve ergonomics for QSP users:
-  - model templates for common hybrid treatment patterns,
-  - convenience APIs for dose schedules, toxicity holds, regime switches.
-- Explore domain-specific extensions:
-  - additional autoimmune / inflammatory models,
-  - more detailed PK/PD mechanisms,
-  - selective stochastic or Filippov extensions where they genuinely add insight.
-- Revisit licensing and packaging based on feedback and collaboration opportunities.
+- Implement low-dimensional Filippov and pseudo-Hopf benchmarks as method-validation problems.
+- Use them to test event detection accuracy, switching-surface handling, continuation of hybrid periodic orbits, and sensitivity robustness near non-smooth transitions.
+- Compare naive workflows against structure-aware hybrid numerics.
+- Use benchmark notes to document what is being validated and why it matters numerically.
 
-Primary outcome: a research-grade codebase that clearly showcases hybrid dynamical-systems methods applied to problems that matter in QSP and mechanistic pharmacology.
+Primary outcome: a stronger testing identity grounded in serious hybrid-systems numerics.
+
+### Stage 6 — Refinement and specialization
+
+- Harden numerics, including step-size control, event-detection tolerances, and sensitivity robustness.
+- Improve documentation strategy through concise conceptual docs, worked examples, benchmark notes, and short application essays.
+- Explore additional autoimmune, inflammatory, or PK/PD examples where hybrid structure is genuinely informative.
+- Revisit licensing and packaging based on collaboration opportunities and the eventual institutional home of the project.
+
+Primary outcome: a research-grade codebase and documentation set that clearly communicates a distinctive methodological identity.
+
+## Future directions
+
+The next phase of `hybrid-ds-julia` should focus on turning the current mathematical and conceptual foundation into a small, credible research platform that is useful both to hybrid-systems specialists and to QSP / PK-PD practitioners.
+
+Near-term development should remain narrow: one deterministic core, one flagship biomedical example, and one compact end-to-end workflow from model specification to simulation, sensitivities, and parameter- or schedule-facing analysis. That is likely more valuable than trying to cover every hybrid-system variant too early.
+
+Longer term, the package should expand in a staged way toward QSP-facing abstractions, differentiable hybrid simulation as a defining feature, selective stochastic and Bayesian extensions, and low-dimensional Filippov benchmarks used as serious numerical validation problems. At the same time, the repository should continue to evolve as both software and technical narrative, with worked examples, benchmark notes, and concise documentation that make the methodological identity of the project immediately clear.
 
 ## Licensing and IP posture
 
@@ -277,11 +278,30 @@ This repository is currently marked **“All rights reserved.”** In practical 
 
 That posture is **provisional rather than permanent**. The goal is to keep IP options open so that future collaborators or an employer can help determine the most appropriate long-term model—whether that is an internal company library, a company-backed open-source project, or a hybrid arrangement that balances community access with strategic needs.
 
+Issues, discussion, and scientific feedback are welcome, but reuse requires explicit permission.
+
 The directional preference is toward an eventual open-source model once a stable institutional home and governance structure are in place, but for now the repository is public for visibility and discussion while the IP remains flexible and the codebase continues to evolve.
 
 ## Further reading
 
 The list below is intended as a starting point for readers who want to explore the surrounding literature; it includes a mix of sources that directly shaped this project and others identified as clearly relevant while mapping the broader landscape.
+
+### Related hybrid-systems papers in other domains
+
+- Hereid, A., Kolathaya, S., Hubicki, J., & Ames, A. D. (2015). *Hybrid Zero Dynamics based Multiple Shooting Optimization with Applications to Bipedal Robotic Walking*. *IEEE International Conference on Robotics and Automation (ICRA)*. [Link](http://ames.caltech.edu/icra_2015_multiple_shooting.pdf)  
+  This paper is particularly relevant because it combines hybrid locomotion dynamics with multiple-shooting optimization and derivative-based numerical updates. It validates the idea that hybrid systems with impacts and discrete events can be treated using structured multiple shooting and analytically informed sensitivities, closely parallel to the numerical philosophy behind `hybrid-ds-julia` even though the application domain is bipedal robotic walking rather than pharmacology.
+
+- Johnson, A. M., Burden, S. A., & Koditschek, D. E. (2016). *A hybrid systems model for simple manipulation and self-manipulation systems*. *The International Journal of Robotics Research*. [Link](http://faculty.washington.edu/sburden/_papers/JohnsonBurden2016ijrr.pdf)  
+  This paper is relevant because it develops a formal hybrid dynamical-systems model for robotic systems with intermittent impacts and contact changes, exactly the kind of event-driven structure that motivates `hybrid-ds-julia`. Although the application domain is robotics rather than pharmacology, the underlying numerical and conceptual issues—mode changes, discontinuities, reset logic, and mathematically consistent event handling—are closely analogous.
+
+- Li, H., & Wensing, P. M. (2020). *Hybrid Systems Differential Dynamic Programming for Whole-Body Motion Planning of Legged Robots*. [Link](http://arxiv.org/abs/2006.08102)  
+  This paper is relevant because it treats trajectory optimization for systems with impacts and state-based switching, showing how optimization must be adapted when dynamics are hybrid rather than globally smooth. That is directly aligned with the long-term aim of making event-aware sensitivities and optimization central features of `hybrid-ds-julia`.
+
+- Fariba, F., Eslami, M., & Jafari Shahbazzadeh, M. (2023). *Stability Analysis and Voltage Control in the Power System Based on the Hybrid Automata Model*. *Mathematical Problems in Engineering*. [Link](https://onlinelibrary.wiley.com/doi/10.1155/2023/5037957)  
+  This paper is relevant because it uses a hybrid automata framework to represent the interaction of continuous power-system dynamics with discrete switching events such as disturbances, capacitor-bank actions, and transformer operations. Its relevance here is not domain overlap, but methodological overlap: it shows that hybrid formalisms become useful whenever system behavior depends on both continuous evolution and discrete supervisory logic.
+
+- Odunlami, B. G., Netto, M., & Susuki, Y. (2025). *Hybrid dynamical systems modeling of power systems*. [Link](https://arxiv.org/abs/2509.02822)  
+  This paper is relevant because it surveys hybrid modeling approaches for modern power systems, including hybrid automata, switched systems, and piecewise-affine formulations. It helps reinforce a broader claim behind `hybrid-ds-julia`: hybrid methods are not a niche construction for one scientific field, but a general framework for domains where continuous dynamics interact with discrete events, controls, and switching structure.
 
 ### Core dynamical systems / hybrid methods
 
