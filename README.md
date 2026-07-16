@@ -35,13 +35,13 @@ The longer-term aim is to make hybrid dynamical-systems workflows directly usabl
 
 That background included variational equations, multiple shooting, continuation methods, and the geometric viewpoint on periodic orbits, bifurcations, and sensitivities that underlies much of modern work in both smooth and hybrid systems.
 
-This project is grounded in prior applied work rather than only in abstract theory. Attached is a preprint of a 2009 paper that Sean Carver published as first author in the journal *Chaos*, with John Guckenheimer and Noah Cowan as coauthors. That work, carried out in the laboratory of Noah Cowan, involved hybrid-system computations in which accurate simulation and sensitivity propagation across events were essential.
+This project is grounded in prior applied work rather than only in abstract theory. A preprint of a 2009 paper that Sean Carver published as first author in the journal *Chaos*, with John Guckenheimer and Noah Cowan as coauthors, is available [here](https://limbs.lcsr.jhu.edu/wp-content/papercite-data/pdf/carverlateral2009.pdf). That work, carried out in the laboratory of Noah Cowan, involved hybrid-system computations in which accurate simulation and sensitivity propagation across events were essential.
 
 The preprint contains nine figures in total, and the last three figures, on pages 33–35, are especially relevant here because they visualize the deadbeat manifold described in the text. Each pixel in these plots is the result of solving a boundary value problem, and the manifold is built by solving successive boundary value problems along trajectories that traverse event times, with sensitivities propagated through those events rather than approximated by finite differences.
 
 Those figures serve as evidence of prior work on accurate simulation and sensitivity analysis for a hybrid dynamical system. Their construction depends on numerically accurate event handling, boundary value continuation across hybrid transitions, and structured sensitivity propagation. In problems of this kind, naive shooting methods paired with finite-difference sensitivities, even in double-precision arithmetic, are often too ill-conditioned to produce convergent Newton iterates or reliable optimization steps.
 
-Permission is currently pending to reproduce these figures and their captions directly in this repository. In the meantime, readers who wish to examine them can consult the linked preprint from the laboratory of Noah Cowan, which has been cleared for posting and includes the figures, their captions, and the surrounding discussion explaining what is being visualized and how the computations were carried out.
+Permission is currently pending to reproduce these figures and their captions directly in this repository. In the meantime, readers who wish to examine them can consult the linked preprint on the LIMBS website maintained by Noah Cowan, which has been cleared for posting and includes the figures, their captions, and the surrounding discussion explaining what is being visualized and how the computations were carried out.
 
 ## Motivation
 
@@ -333,6 +333,9 @@ The directional preference is toward an eventual open-source model once a stable
 The list below is intended as a starting point for readers who want to explore the surrounding literature; it includes a mix of sources that directly shaped this project and others identified as clearly relevant while mapping the broader landscape.
 
 ### Related hybrid-systems papers in other domains
+
+- Carver, S. G., Cowan, N. J., & Guckenheimer, J. M. (2009). *Lateral stability of the spring-mass hopper suggests a two-step control strategy for running.* *Chaos*, 19(2), 026106. [Link](https://limbs.lcsr.jhu.edu/wp-content/papercite-data/pdf/carverlateral2009.pdf)  
+  This paper uses a hybrid spring–mass hopper model to study lateral stability and control in running, and it demonstrates accurate hybrid-system simulation and sensitivity propagation across events. It is a foundational example for this repository’s emphasis on numerically robust, event-aware hybrid dynamical systems, and its first author is the same person developing `hybrid-ds-julia`.
 
 - Hereid, A., Kolathaya, S., Hubicki, J., & Ames, A. D. (2015). *Hybrid Zero Dynamics based Multiple Shooting Optimization with Applications to Bipedal Robotic Walking*. *IEEE International Conference on Robotics and Automation (ICRA)*. [Link](http://ames.caltech.edu/icra_2015_multiple_shooting.pdf)  
   This paper is particularly relevant because it combines hybrid locomotion dynamics with multiple-shooting optimization and derivative-based numerical updates. It validates the idea that hybrid systems with impacts and discrete events can be treated using structured multiple shooting and analytically informed sensitivities, closely parallel to the numerical philosophy behind `hybrid-ds-julia` even though the application domain is bipedal robotic walking rather than pharmacology.
