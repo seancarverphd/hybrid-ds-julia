@@ -6,6 +6,8 @@
 
 The main intended application area is **quantitative systems pharmacology (QSP) and PK/PD**, where mechanistic models are used to study dose and schedule optimization, response heterogeneity, relapse and remission dynamics, mechanism differentiation, and translational decision-making.
 
+One promising application is early-phase immunotherapy dose-finding, where toxicity-driven holds, rechallenge, delayed adverse events, and complex schedules are common. In that setting, the framework can help represent treatment decision rules directly inside mechanistic models so that dose, schedule, efficacy, and toxicity can be studied together.
+
 The goal of this project is not to rebuild low-level solver infrastructure from scratch. Instead, it is to build a practical layer on top of Julia’s scientific-computing ecosystem that helps modelers work more effectively with trajectories that cross many events and decision boundaries, while remaining close to the kinds of schedule- and intervention-facing questions that matter in translational pharmacology.
 
 The near-term goal is a compact deterministic core with one flagship biomedical example and one end-to-end workflow that makes the package’s value immediately visible to QSP and PK/PD users.
@@ -39,9 +41,7 @@ This project is grounded in prior applied work rather than only in abstract theo
 
 The preprint contains nine figures in total, and the last three figures, on pages 33–35, are especially relevant here because they visualize the deadbeat manifold described in the text. Each pixel in these plots is the result of solving a boundary value problem, and the manifold is built by solving successive boundary value problems along trajectories that traverse event times, with sensitivities propagated through those events rather than approximated by finite differences.
 
-Those figures serve as evidence of prior work on accurate simulation and sensitivity analysis for a hybrid dynamical system. Their construction depends on numerically accurate event handling, boundary value continuation across hybrid transitions, and structured sensitivity propagation. In problems of this kind, naive shooting methods paired with finite-difference sensitivities, even in double-precision arithmetic, are often too ill-conditioned to produce convergent Newton iterates or reliable optimization steps.
-
-Permission is currently pending to reproduce these figures and their captions directly in this repository. In the meantime, readers who wish to examine them can consult the linked preprint on the LIMBS website maintained by Noah Cowan, which has been cleared for posting and includes the figures, their captions, and the surrounding discussion explaining what is being visualized and how the computations were carried out.
+Those figures serve as evidence of prior work on accurate simulation and sensitivity analysis for a hybrid dynamical system. Their construction depends on numerically accurate event handling, boundary value continuation across hybrid transitions, and structured sensitivity propagation. In problems of this kind, naive shooting methods paired with finite-difference sensitivities, even in double-precision arithmetic, are often too ill-conditioned to produce convergent Newton iterates or reliable optimization steps. Permission is currently pending to reproduce these figures and their captions directly in this repository. In the meantime, readers who wish to examine them can consult the linked preprint on the LIMBS website maintained by Noah Cowan, which has been cleared for posting and includes the figures, their captions, and the surrounding discussion explaining what is being visualized and how the computations were carried out.
 
 ## Motivation
 
@@ -53,7 +53,7 @@ The core claim of `hybrid-ds-julia` is therefore not that hybrid mathematics is 
 
 ## Why QSP and PK/PD first
 
-QSP and PK/PD are the main intended application areas because they already rely heavily on mechanistic ODE models and because many of their most important questions are inherently schedule- and intervention-dependent.
+QSP and PK/PD are the main intended application areas because they already rely heavily on mechanistic differential-equation models and because many of their most important questions are inherently schedule- and intervention-dependent.
 
 Representative examples include:
 
@@ -63,7 +63,7 @@ Representative examples include:
 
 These are exactly the kinds of systems in which the state trajectory may remain continuous while the governing equations, treatment rules, or state updates change at event times. That structure suggests event-aware simulation, variational sensitivity propagation, multiple shooting, and automatic differentiation rather than treating the entire trajectory as if it were globally smooth.
 
-At the workflow level, most current QSP and PK/PD practice is built around general ODE, PBPK, and pharmacometric toolchains. `hybrid-ds-julia` is not meant to replace that ecosystem. Instead, it aims to complement it with a hybrid numerical layer for models where event structure materially affects simulation, sensitivities, optimization, or translational interpretation.
+At the workflow level, most current QSP and PK/PD practice is built around general differential-equation, PBPK, and pharmacometric toolchains. `hybrid-ds-julia` is not meant to replace that ecosystem. Instead, it aims to complement it with a hybrid numerical layer for models where event structure materially affects simulation, sensitivities, optimization, or translational interpretation.
 
 ## Current direction
 
@@ -116,7 +116,7 @@ where `x(t_k^-)` denotes the state immediately before the event, `x(t_k^+)` the 
 
 In pharmacology and QSP, this is a natural way to represent bolus dosing, pulsed immunotherapy, chemotherapy injections, rescue interventions, treatment resets, or threshold-triggered updates. A fixed-time dose can be modeled as a scheduled jump; a toxicity hold or state-triggered rescue action can be modeled as an event-surface crossing followed by a jump map.
 
-This distinction matters computationally. Between jumps, one integrates a smooth ODE segment; at a jump, one applies an explicit state update; after the jump, one restarts integration under the same or a different vector field. That viewpoint makes it easier to generalize from one treatment model to a broad class of event-rich mechanistic models.
+This distinction matters computationally. Between jumps, one integrates a smooth differential-equation segment; at a jump, one applies an explicit state update; after the jump, one restarts integration under the same or a different vector field. That viewpoint makes it easier to generalize from one treatment model to a broad class of event-rich mechanistic models.
 
 It also matters for sensitivities and optimization. If the model contains jump maps, then derivatives must be propagated not only through the continuous flow but also through the jump itself, using the Jacobian of the map `G_k`.
 
@@ -211,7 +211,7 @@ A hybrid dynamical-systems workflow could help close that gap by mapping compoun
 
 ### Autoimmune and inflammatory disease
 
-Autoimmune and inflammatory diseases are another promising domain because their trajectories often involve flares, remission, tapering, rescue therapy, and long periods of partial control. These state changes are biologically and clinically important, and they are often driven by interventions or thresholds that make the system effectively hybrid even when the underlying biological model is written as an ODE.
+Autoimmune and inflammatory diseases are another promising domain because their trajectories often involve flares, remission, tapering, rescue therapy, and long periods of partial control. These state changes are biologically and clinically important, and they are often driven by interventions or thresholds that make the system effectively hybrid even when the underlying biological model is written as a differential equation.
 
 A hybrid dynamical-systems workflow would allow these disease trajectories to be analyzed in terms of regime changes and event timing. In practical terms, that could support better tapering strategies, more informative biomarker interpretation, and more systematic comparison of regimens intended to maintain remission while minimizing drug burden.
 
@@ -223,9 +223,9 @@ Crop science is therefore not the main target for the package, but it remains an
 
 ## Original crop-science motivation
 
-The immediate technical motivation came from the multiscale bambara groundnut model of Dodd et al., which couples plant-level ODEs to canopy-level competition.
+The immediate technical motivation came from the multiscale bambara groundnut model of Dodd et al., which couples plant-level differential equations to canopy-level competition.
 
-In that model, each plant evolves according to nonlinear growth equations, while changing interaction structure determines local competition and ultimately influences yield. When the active interaction structure is fixed, the model evolves smoothly; when a new interaction becomes active, trajectories remain continuous but growth rates change abruptly. That makes the full coupled system a natural example of a **hybrid dynamical system** rather than a globally smooth ODE.
+In that model, each plant evolves according to nonlinear growth equations, while changing interaction structure determines local competition and ultimately influences yield. When the active interaction structure is fixed, the model evolves smoothly; when a new interaction becomes active, trajectories remain continuous but growth rates change abruptly. That makes the full coupled system a natural example of a **hybrid dynamical system** rather than a globally smooth differential-equation model.
 
 The analogy to pharmacology is direct: canopy occlusion changes local growth rates in much the same way that dosing rules, toxicity thresholds, or therapy switches change the effective dynamics in QSP models. Different scientific domain, same underlying mathematical issue of event-triggered changes in structure.
 
@@ -234,7 +234,7 @@ The analogy to pharmacology is direct: canopy occlusion changes local growth rat
 Planned implementation details include:
 
 - **Language:** Julia.
-- **ODE integration and sensitivity infrastructure:** SciML / [`DifferentialEquations.jl`](https://github.com/SciML/DifferentialEquations.jl) and related tools.
+- **Differential-equation integration and sensitivity infrastructure:** SciML / [`DifferentialEquations.jl`](https://github.com/SciML/DifferentialEquations.jl) and related tools.
 - **Boundary-value and shooting infrastructure:** `BoundaryValueDiffEq.jl` and related shooting workflows.
 - **Automatic differentiation:** likely `ForwardDiff.jl` or `ReverseDiff.jl`, subject to testing and performance considerations.
 - **Optimization:** `Optimization.jl`, `Optim.jl`, `NLopt.jl`, or custom Newton-style solvers.
@@ -253,7 +253,7 @@ The project is organized in stages, moving from a minimal deterministic hybrid c
 
 - Implement a minimal Julia package skeleton with tests and documentation.
 - Represent hybrid and impulsive systems with:
-  - smooth ODE flows between events,
+  - smooth differential-equation flows between events,
   - explicit jump maps at dose times,
   - and event surfaces for state-triggered interventions.
 - Implement variational-equation propagation for piecewise-smooth and impulsive models, including sensitivity updates across jumps.
@@ -404,13 +404,13 @@ The list below is intended as a starting point for readers who want to explore t
 ### Sensitivity, adjoint, and automatic differentiation
 
 - Rackauckas, C., Nie, Q., et al. (2020). *Accelerated pharmacometrics with adaptive solvers and automatic differentiation in Pumas*. *bioRxiv* 2020.11.28.402297. [Link](https://doi.org/10.1101/2020.11.28.402297)  
-  Demonstrates forward-mode automatic differentiation applied directly to NLME population PK/PD models in a production pharmacometrics platform built on Julia and DifferentialEquations.jl. It shows that AD-backed sensitivities are already entering PK/PD practice, albeit mainly in smooth ODE settings.
+  Demonstrates forward-mode automatic differentiation applied directly to NLME population PK/PD models in a production pharmacometrics platform built on Julia and DifferentialEquations.jl. It shows that AD-backed sensitivities are already entering PK/PD practice, albeit mainly in smooth differential-equation settings.
 
 - Fröhlich, F., Kaltenbacher, B., Theis, F. J., & Hasenauer, J. (2017). *Scalable parameter estimation for large-scale ODE models of biochemical reaction networks*. *PLoS Computational Biology*, 13(1), e1005331. [Link](https://doi.org/10.1371/journal.pcbi.1005331)  
-  Implements continuous adjoint sensitivity analysis for large biochemical ODE systems. While the domain is systems biology rather than QSP/PK/PD, the methodology and tooling (AMICI) are directly relevant to large mechanistic pharmacology models.
+  Implements continuous adjoint sensitivity analysis for large biochemical differential-equation systems. While the domain is systems biology rather than QSP/PK/PD, the methodology and tooling (AMICI) are directly relevant to large mechanistic pharmacology models.
 
 - Stapor, P., Fröhlich, F., & Hasenauer, J. (2017). *Optimization of ODE models using the adjoint-state method and automatic differentiation*. *Bioinformatics*, 33(7), 1049–1056. [Link](https://doi.org/10.1093/bioinformatics/btx676)  
-  Implements forward sensitivity (variational) equations with correct jump conditions at events, providing exactly the sensitivity jump formulas needed for dosing events. The test cases are systems biology models, but the techniques apply directly to event-rich pharmacological ODEs.
+  Implements forward sensitivity (variational) equations with correct jump conditions at events, providing exactly the sensitivity jump formulas needed for dosing events. The test cases are systems biology models, but the techniques apply directly to event-rich pharmacological differential-equation models.
 
 - Rackauckas, C., Irurzun-Arana, I., McDonald, T., & Trocóniz, I. (2020). *Differential equations and pharmacometrics: recent developments and future directions*. *Trends in Pharmacological Sciences*, 41(11), 882–895. [Link](https://doi.org/10.1016/j.tips.2020.09.005)  
   A conceptual review that discusses adjoint methods, stochastic simulation, and scientific machine learning for PK/PD. It does not implement adjoint sensitivity in a pharmacological model but helps frame where `hybrid-ds-julia` fits in future PK/PD tooling.
@@ -424,7 +424,7 @@ The list below is intended as a starting point for readers who want to explore t
   A useful overview of how stochastic differential equations, stochastic simulation algorithms, and related modern differential-equation methods are entering pharmacometrics. It is especially relevant for positioning future `hybrid-ds-julia` work relative to broader PK/PD numerical-methods development.
 
 - Oduola, W., & Li, X. (2018). *Multiscale Tumor Modeling With Drug Pharmacokinetic/Pharmacodynamic Information Using Stochastic Hybrid Systems*. *Cancer Informatics*, 17. [Link](https://pmc.ncbi.nlm.nih.gov/articles/PMC6073835/)  
-  Although not an impulsive-DE or Filippov paper, it is still useful as an example of stochastic hybrid modeling in a pharmacological cancer setting. It helps mark the boundary between architectural “hybrid” modeling and the more formal event-aware numerical methods targeted by this repository.
+  Although not an impulsive-differential-equation or Filippov paper, it is still useful as an example of stochastic hybrid modeling in a pharmacological cancer setting. It helps mark the boundary between architectural “hybrid” modeling and the more formal event-aware numerical methods targeted by this repository.
 
 ### Mechanistic crop models and trait optimization
 
