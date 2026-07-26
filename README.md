@@ -10,7 +10,7 @@ One promising application is early-phase immunotherapy dose-finding, where toxic
 
 The goal of this project is not to rebuild low-level solver infrastructure from scratch. Instead, it is to build a practical layer on top of Julia’s scientific-computing ecosystem that helps modelers work more effectively with trajectories that cross many events and decision boundaries, while remaining close to the kinds of schedule- and intervention-facing questions that matter in translational pharmacology.
 
-The near-term goal is a compact deterministic core with one flagship biomedical example and one end-to-end workflow that makes the package’s value immediately visible to QSP and PK/PD users.
+The near-term goal is a compact deterministic core with one flagship biomedical example, a short sequence of higher-dimensional extensions, and one end-to-end workflow that makes the package’s value immediately visible to QSP and PK/PD users.
 
 ## Why this matters
 
@@ -39,9 +39,7 @@ That background included variational equations, multiple shooting, continuation 
 
 This project is grounded in prior applied work rather than only in abstract theory. A preprint of a 2009 paper that Sean Carver published as first author in the journal *Chaos*, with John Guckenheimer and Noah Cowan as coauthors, is available [here](https://limbs.lcsr.jhu.edu/wp-content/papercite-data/pdf/carverlateral2009.pdf). That work, carried out in the laboratory of Noah Cowan, involved hybrid-system computations in which accurate simulation and sensitivity propagation across events were essential.
 
-The preprint contains nine figures in total, and the last three figures, on pages 33–35, are especially relevant here because they visualize the deadbeat manifold described in the text. Each pixel in these plots is the result of solving a boundary value problem, and the manifold is built by solving successive boundary value problems along trajectories that traverse event times, with sensitivities propagated through those events rather than approximated by finite differences.
-
-Those figures serve as evidence of prior work on accurate simulation and sensitivity analysis for a hybrid dynamical system. Their construction depends on numerically accurate event handling, boundary value continuation across hybrid transitions, and structured sensitivity propagation. In problems of this kind, naive shooting methods paired with finite-difference sensitivities, even in double-precision arithmetic, are often too ill-conditioned to produce convergent Newton iterates or reliable optimization steps. Permission is currently pending to reproduce these figures and their captions directly in this repository. In the meantime, readers who wish to examine them can consult the linked preprint on the LIMBS website maintained by Noah Cowan, which has been cleared for posting and includes the figures, their captions, and the surrounding discussion explaining what is being visualized and how the computations were carried out.
+The preprint contains nine figures in total, and the last three figures, on pages 33–35, are especially relevant here because they visualize the deadbeat manifold described in the text. Each pixel in these plots is the result of solving a boundary value problem, and the manifold is built by solving successive boundary value problems along trajectories that traverse event times, with sensitivities propagated through those events rather than approximated by finite differences.... Those figures serve as evidence of prior work on accurate simulation and sensitivity analysis for a hybrid dynamical system. Their construction depends on numerically accurate event handling, boundary value continuation across hybrid transitions, and structured sensitivity propagation. In problems of this kind, naive shooting methods paired with finite-difference sensitivities, even in double-precision arithmetic, are often too ill-conditioned to produce convergent Newton iterates or reliable optimization steps. Permission is currently pending to reproduce these figures and their captions directly in this repository. In the meantime, readers who wish to examine them can consult the linked preprint on the LIMBS website maintained by Noah Cowan, which has been cleared for posting and includes the figures, their captions, and the surrounding discussion explaining what is being visualized and how the computations were carried out.
 
 ## Motivation
 
@@ -67,7 +65,7 @@ At the workflow level, most current QSP and PK/PD practice is built around gener
 
 ## Current direction
 
-The immediate focus is to turn the current mathematical and conceptual foundation into a small but credible research platform by implementing a narrow deterministic core and one flagship biomedical example.
+The immediate focus is to turn the current mathematical and conceptual foundation into a small but credible research platform by implementing a narrow deterministic core, one flagship biomedical example, and a short sequence of higher-dimensional extensions.
 
 The package will be strongest if its first public milestones are reproducible, technically convincing, and clearly tied to end-to-end event-aware workflows that a QSP or PK/PD modeler can recognize: model specification, simulation across events, sensitivity propagation through jumps and regime changes, and schedule- or parameter-facing analysis.
 
@@ -81,6 +79,7 @@ The next implementation targets are:
 
 - a deterministic hybrid core,
 - a fully worked flagship biomedical example,
+- a short sequence of higher-dimensional biomedical extensions,
 - and accompanying documentation that shows the workflow from model specification through simulation, sensitivities, and schedule- or parameter-facing analysis.
 
 The initial flagship example will be chosen to make the translational value of the package clear early: not only that the model is hybrid in a mathematical sense, but that event-aware numerics improve the ability to compare regimens, analyze treatment logic, and reason about clinically meaningful regime changes.
@@ -95,9 +94,7 @@ A typical mechanistic model is represented by a state vector `x`, with dynamics 
 dx/dt = f_k(x, t)   for t in [t_k, t_{k+1})
 ```
 
-where the index `k` labels the active interaction or control regime.
-
-Whenever the system crosses an event surface—for example, a dosing time, a toxicity threshold, or the activation of a new interaction term—the governing vector field changes from `f_k` to `f_{k+1}`. This places the model in the general class of **hybrid dynamical systems**, where continuous trajectories are punctuated by discrete structural changes.
+where the index `k` labels the active interaction or control regime.... Whenever the system crosses an event surface—for example, a dosing time, a toxicity threshold, or the activation of a new interaction term—the governing vector field changes from `f_k` to `f_{k+1}`. This places the model in the general class of **hybrid dynamical systems**, where continuous trajectories are punctuated by discrete structural changes.
 
 For a QSP or PK/PD modeler, this is the difference between treating doses and intervention rules as small perturbations in an otherwise smooth system and treating them explicitly as regime-changing events that the solver and sensitivity calculations are designed to respect.
 
@@ -155,9 +152,7 @@ For QSP- and PK/PD-facing workflows, the practical value is that multiple shooti
 
 ### Automatic differentiation
 
-**Automatic differentiation** is central to the package vision because it provides a practical way to compute Jacobians of the vector field, Jacobians of jump maps, and gradients of scalar objectives without fragile finite-difference approximations.
-
-In event-driven, high-dimensional mechanistic models, this is especially valuable when those derivatives are used inside variational equations, jump updates, multiple-shooting solvers, and gradient-based optimization loops.
+**Automatic differentiation** is central to the package vision because it provides a practical way to compute Jacobians of the vector field, Jacobians of jump maps, and gradients of scalar objectives without fragile finite-difference approximations.... In event-driven, high-dimensional mechanistic models, this is especially valuable when those derivatives are used inside variational equations, jump updates, multiple-shooting solvers, and gradient-based optimization loops.
 
 From a workflow perspective, automatic differentiation is part of what can make hybrid simulation usable in practice rather than only analyzable on paper.
 
@@ -170,6 +165,12 @@ The first biomedical model planned for this workflow is the hybrid impulsive tum
 This model is intended to serve as the flagship early implementation target for the package, not just as a motivating example. It is a strong first biomedical target because the hybrid structure is not incidental: treatment is represented through pulsed interventions of different frequencies, so the long-term behavior depends directly on event timing, treatment scheduling, and the interaction between continuous tumor–immune dynamics and impulsive updates.
 
 From a pharmacology and QSP perspective, it sits close to the kinds of questions decision-makers care about: how treatment frequency, timing, and combination strategy influence tumor control, loss of control, and the robustness of a regimen under changing conditions.
+
+### Next biomedical extensions
+
+After the Zhao model, the natural next step is a hierarchy of higher-dimensional hybrid models that preserve its core treatment-logic structure while adding the pharmacology and resistance features developed in Pang et al. The Zhao model is a strong first flagship because it is genuinely hybrid in a way that matters for translational modeling: it combines continuous tumor–immune dynamics with fixed-time immunotherapy pulses and state-triggered chemotherapy when tumor burden reaches a threshold. That makes it ideal for establishing the package’s core workflow—event-aware simulation, jump handling, sensitivity propagation across events, and schedule-facing analysis—in a system that is small enough to understand clearly yet rich enough to demonstrate why hybrid structure matters.
+
+The next stage is to extend that model upward in dimension without losing its threshold-driven hybrid logic. A first generalization would add an explicit chemotherapy concentration variable, producing a 3D hybrid model that retains Zhao’s event structure while introducing a PK-like state absent from the original formulation. From there, the model can be expanded to include drug-resistant tumor subpopulations and eventually multiple chemotherapy agents on distinct schedules, yielding 4D and 6D variants that incorporate features present in Pang et al., such as explicit drug concentrations, resistant subpopulations, and multidrug treatment structure. This creates a coherent model ladder for `hybrid-ds-julia`: Zhao as the entry-point flagship, followed by increasingly realistic hybrid QSP-style models that stress-test the same numerical machinery in settings closer to PK/PD, resistance, and treatment optimization.
 
 ### Bayesian and stochastic extensions
 
@@ -199,9 +200,7 @@ That would make it easier to study how the timing and logic of interventions sha
 
 ### Translational pharmacology
 
-Many of the most important translational questions are inherently dynamical: whether a schedule sustains control, whether biomarker trajectories indicate a regime shift, or whether a mechanism remains effective under realistic interruptions or patient heterogeneity.
-
-`hybrid-ds-julia` is intended to support this layer by making it easier to represent treatment logic, biomarker thresholds, and intervention schedules explicitly inside mechanistic models. That can help identify which strategies are robust, which are fragile, and which biological hypotheses are most consistent with clinically relevant patterns of response.
+Many of the most important translational questions are inherently dynamical: whether a schedule sustains control, whether biomarker trajectories indicate a regime shift, or whether a mechanism remains effective under realistic interruptions or patient heterogeneity.... `hybrid-ds-julia` is intended to support this layer by making it easier to represent treatment logic, biomarker thresholds, and intervention schedules explicitly inside mechanistic models. That can help identify which strategies are robust, which are fragile, and which biological hypotheses are most consistent with clinically relevant patterns of response.
 
 ### SAR progression and mechanism differentiation
 
@@ -261,15 +260,14 @@ The project is organized in stages, moving from a minimal deterministic hybrid c
   - vector-field Jacobians,
   - jump-map Jacobians,
   - and gradients of scalar objectives.
-- Add multiple-shooting support across event-defined segments.
-
-Primary outcome: a small, reliable deterministic core that already demonstrates the central mathematical identity of the package.
+- Add multiple-shooting support across event-defined segments.... Primary outcome: a small, reliable deterministic core that already demonstrates the central mathematical identity of the package.
 
 ### Stage 2 — Flagship biomedical workflow
 
 - Develop one fully documented flagship biomedical example centered on hybrid tumor–immune treatment dynamics.
 - Show the full workflow from model definition to event-aware simulation, sensitivity propagation, and schedule- or parameter-facing analysis.
 - Use the example as a tutorial, benchmark, and proof-of-concept for clinically meaningful event-driven modeling questions.
+- Add one or more higher-dimensional extensions of the flagship model to introduce explicit PK states, resistance structure, and more realistic multi-regimen treatment logic while preserving the same event-aware workflow.
 - Add tests and reproducible scripts so the example also serves as a numerical validation target.
 
 Primary outcome: a compact end-to-end demonstration stack that makes the package credible to both hybrid-systems and pharmacology audiences.
@@ -328,9 +326,7 @@ Issues, discussion, and scientific feedback are welcome, but reuse requires expl
 
 The directional preference is toward an eventual open-source model once a stable institutional home and governance structure are in place, but for now the repository is public for visibility and discussion while the IP remains flexible and the codebase continues to evolve.
 
-## Further reading
-
-The list below is intended as a starting point for readers who want to explore the surrounding literature; it includes a mix of sources that directly shaped this project and others identified as clearly relevant while mapping the broader landscape.
+## Further reading... The list below is intended as a starting point for readers who want to explore the surrounding literature; it includes a mix of sources that directly shaped this project and others identified as clearly relevant while mapping the broader landscape.
 
 ### Related hybrid-systems papers in other domains
 
@@ -355,9 +351,7 @@ The list below is intended as a starting point for readers who want to explore t
 ### Core dynamical systems / hybrid methods
 
 - Guckenheimer, J., & Holmes, P. (1983). *Nonlinear Oscillations, Dynamical Systems, and Bifurcations of Vector Fields*. Springer. [Link](https://doi.org/10.1137/1026128)  
-  A classic reference for geometric dynamical systems, periodic orbits, variational ideas, and bifurcations. It provides much of the mathematical background that motivates the methodology behind this project.
-
-- Kuznetsov, Y. A., Rinaldi, S., & Gragnani, A. (2003). *One-parameter bifurcations in planar Filippov systems*. *International Journal of Bifurcation and Chaos*. [Link](https://pure.iiasa.ac.at/id/eprint/6817/)  
+  A classic reference for geometric dynamical systems, periodic orbits, variational ideas, and bifurcations. It provides much of the mathematical background that motivates the methodology behind this project.... - Kuznetsov, Y. A., Rinaldi, S., & Gragnani, A. (2003). *One-parameter bifurcations in planar Filippov systems*. *International Journal of Bifurcation and Chaos*. [Link](https://pure.iiasa.ac.at/id/eprint/6817/)  
   A foundational paper on codimension-one bifurcations in planar Filippov systems. It is especially useful here because it organizes the local and global bifurcation picture in a way that supports computational test problems.
 
 - Castillo, J., Llibre, J., & Verduzco, F. (2017). *The pseudo-Hopf bifurcation for planar discontinuous piecewise linear differential systems*. *Nonlinear Dynamics*, 90, 1829–1840. [Link](https://doi.org/10.1007/s11071-017-3766-9)  
@@ -381,9 +375,7 @@ The list below is intended as a starting point for readers who want to explore t
   A particularly relevant follow-on paper because it studies a hybrid impulsive tumor–immune model with fixed-time pulsed immunotherapy and state-feedback impulsive chemotherapy. It is one of the closest recent matches to the event-aware treatment logic that `hybrid-ds-julia` is intended to support.
 
 - Kim, B., Cho, Y., Nie, Q., & Jung, S. (2016). *Stability of a tumor–immune model with state-dependent impulses*. *Discrete Dynamics in Nature and Society*, 2016, 2979414. [Link](https://doi.org/10.1155/2016/2979414)  
-  An example of state-dependent impulsive treatment, where therapy is triggered when the system crosses a threshold. It provides a concrete case of hybrid structure driven by biological state rather than only by fixed dosing schedules.
-
-- Wang, X., & Zhang, Y. (2021). *Dynamics of immunotherapy antitumor models with impulsive control strategy*. *Mathematical Methods in the Applied Sciences*. [Link](https://doi.org/10.1002/mma.7788)  
+  An example of state-dependent impulsive treatment, where therapy is triggered when the system crosses a threshold. It provides a concrete case of hybrid structure driven by biological state rather than only by fixed dosing schedules.... - Wang, X., & Zhang, Y. (2021). *Dynamics of immunotherapy antitumor models with impulsive control strategy*. *Mathematical Methods in the Applied Sciences*. [Link](https://doi.org/10.1002/mma.7788)  
   A useful impulsive-treatment reference showing that antitumor models with impulsive control remain an active area of mathematical development. It strengthens the case for hybrid and event-aware numerical workflows in mechanistic oncology models.
 
 - Grebogi, C., Ren, H., Baptista, M. S., & Yang, H. (2017). *Impulsive chemotherapy strategies for tumors: a Lyapunov approach*. *Philosophical Transactions of the Royal Society A*, 375, 20160221. [Link](https://doi.org/10.1098/rsta.2016.0221)  
@@ -432,7 +424,5 @@ The list below is intended as a starting point for readers who want to explore t
   A major conceptual motivation for this project. It shows how changing interaction structure in a multiscale biological model can create hybrid or piecewise-smooth behavior even outside the usual engineering examples.
 
 - Azam-Ali, S. N., Sesay, A., Karikari, S. K., Massawe, F. J., Aguilar-Manjarrez, J., Bannayan, M., & Hampson, K. J. (2001). *Assessing the potential of an underutilized crop — a case study using bambara groundnut*. *Experimental Agriculture*, 37(4), 433–472. [Link](https://www.fao.org/4/y0494e/y0494e05.htm)  
-  A broader agronomic and modeling reference for bambara groundnut. It helps situate the crop-science side of the project in a larger mechanistic and applied context.
-
-- Karunaratne, A. S., Hoogenboom, G., & Boote, K. J. (2024). *Adapting the CROPGRO model to simulate growth, development, and yield of Bambara groundnut (Vigna subterranea L. Verdc), an underutilized crop*. *European Journal of Agronomy*, 160, 127347. [Link](https://www.sciencedirect.com/science/article/abs/pii/S1161030124002004)  
+  A broader agronomic and modeling reference for bambara groundnut. It helps situate the crop-science side of the project in a larger mechanistic and applied context.... - Karunaratne, A. S., Hoogenboom, G., & Boote, K. J. (2024). *Adapting the CROPGRO model to simulate growth, development, and yield of Bambara groundnut (Vigna subterranea L. Verdc), an underutilized crop*. *European Journal of Agronomy*, 160, 127347. [Link](https://www.sciencedirect.com/science/article/abs/pii/S1161030124002004)  
   A recent crop-modeling paper showing continued interest in mechanistic and multiscale modeling for bambara groundnut. It is useful for seeing how crop-system modeling remains an active applied-math domain.
