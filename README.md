@@ -1,10 +1,64 @@
 # hybrid-ds-julia
 
+## Introduction
+
+`hybrid-ds-julia` is an event-aware numerical layer for mechanistic QSP and PK/PD models that need to represent real treatment logic: dosing pulses, treatment holidays, toxicity holds, threshold-triggered interventions, therapy switches, and other hybrid structure. It is not a replacement for established pharmacometric platforms such as NONMEM, nlmixr2/RxODE, Monolix, or Pumas; instead, it is designed to sit alongside them and address numerical issues that arise when models contain many events, jumps, and regime changes.
+
+In many current workflows, dosing and other events are encoded via data tables and IF/THEN logic, with sensitivities obtained by finite differences and trajectories treated as if they were globally smooth. Around events, that combination can lead to ill-conditioned gradients, brittle schedule optimization, and noisy parameter sensitivities. By contrast, `hybrid-ds-julia` is built to propagate variational equations across piecewise-smooth flows, apply analytically derived jump and saltation maps at event times, and use multiple shooting to stabilize trajectories and boundary-value computations. The aim is to make those hybrid dynamical-systems tools practically usable for decision-focused pharmacology, so that modelers can study dose, timing, and treatment logic without re-specifying complex models from scratch or fighting fragile numerics around events.
+
+## Table of contents
+
+- [Overview](#hybrid-ds-julia)
+- [What this package is not](#what-this-package-is-not)
+- [Why this matters](#why-this-matters)
+- [Who is building this](#who-is-building-this)
+- [Motivation](#motivation)
+- [Why QSP and PK/PD first](#why-qsp-and-pkpd-first)
+- [Diversity and equity in workflows](#diversity-and-equity-in-workflows)
+  - [Diversity in the population](#diversity-in-the-population)
+  - [Equity in healthcare](#equity-in-healthcare)
+- [Current direction](#current-direction)
+- [Current status](#current-status)
+- [Mathematical approach](#mathematical-approach)
+  - [Piecewise-smooth formulation](#piecewise-smooth-formulation)
+  - [Jump phenomena and impulsive updates](#jump-phenomena-and-impulsive-updates)
+  - [Variational equations](#variational-equations)
+  - [Multiple shooting](#multiple-shooting)
+  - [Automatic differentiation](#automatic-differentiation)
+- [Test beds](#test-beds)
+  - [First biomedical target](#first-biomedical-target)
+  - [Next biomedical extensions](#next-biomedical-extensions)
+  - [Bayesian and stochastic extensions](#bayesian-and-stochastic-extensions)
+  - [Filippov pseudo-Hopf normal form](#filippov-pseudo-hopf-normal-form)
+- [Other disease applications](#other-disease-applications)
+- [Example applications](#example-applications)
+  - [QSP and PK/PD](#qsp-and-pkpd)
+  - [Translational pharmacology](#translational-pharmacology)
+  - [SAR progression and mechanism differentiation](#sar-progression-and-mechanism-differentiation)
+  - [Autoimmune and inflammatory disease](#autoimmune-and-inflammatory-disease)
+  - [Crop science and precision agriculture](#crop-science-and-precision-agriculture)
+- [Original crop-science motivation](#original-crop-science-motivation)
+- [Software plan](#software-plan)
+- [Roadmap](#roadmap)
+  - [Stage 1 — Narrow deterministic core](#stage-1--narrow-deterministic-core)
+  - [Stage 2 — Flagship biomedical workflow](#stage-2--flagship-biomedical-workflow)
+  - [Stage 3 — QSP-facing workflows](#stage-3--qsp-facing-workflows)
+  - [Stage 4 — Stochastic and Bayesian extensions](#stage-4--stochastic-and-bayesian-extensions)
+  - [Stage 5 — Filippov and benchmark suite](#stage-5--filippov-and-benchmark-suite)
+  - [Stage 6 — Refinement and specialization](#stage-6--refinement-and-specialization)
+- [Future directions](#future-directions)
+- [Licensing and IP posture](#licensing-and-ip-posture)
+- [Further reading](#further-reading)
+  - [Related hybrid-systems papers in other domains](#related-hybrid-systems-papers-in-other-domains)
+  - [Core dynamical systems / hybrid methods](#core-dynamical-systems--hybrid-methods)
+  - [QSP / PK–PD concepts and practice](#qsp--pkpd-concepts-and-practice)
+  - [Sensitivity, adjoint, and automatic differentiation](#sensitivity-adjoint-and-automatic-differentiation)
+  - [SDE / stochastic methods](#sde--stochastic-methods)
+  - [Mechanistic crop models and trait optimization](#mechanistic-crop-models-and-trait-optimization)
+
 *A Julia package under development for quantitative systems pharmacology (QSP) and PK/PD models that need to handle real treatment logic: dosing pulses, treatment holidays, toxicity holds, threshold-triggered interventions, therapy switches, and other hybrid structure.*
 
-`hybrid-ds-julia` is aimed at **event-aware simulation, sensitivities, and optimization** for mechanistic models whose behavior depends not only on continuous dynamics, but also on when and how clinically meaningful events occur.
-
-The main intended application area is **quantitative systems pharmacology (QSP) and PK/PD**, with a **flagship focus on immuno-oncology tumor–immune models** where treatment is inherently schedule- and event-driven. In that setting, the framework is meant to support dose and schedule optimization, response heterogeneity, relapse and remission dynamics, mechanism differentiation, and translational decision-making.
+`hybrid-ds-julia` is aimed at **event-aware simulation, sensitivities, and optimization** for mechanistic models whose behavior depends not only on continuous dynamics, but also on when and how clinically meaningful events occur. The main intended application area is **quantitative systems pharmacology (QSP) and PK/PD**, with a **flagship focus on immuno-oncology tumor–immune models** where treatment is inherently schedule- and event-driven.
 
 One promising application is early-phase immunotherapy dose-finding, where toxicity-driven holds, rechallenge, delayed adverse events, and complex schedules are common. In that setting, the framework can help represent treatment decision rules directly inside mechanistic models so that dose, schedule, efficacy, and toxicity can be studied together.
 
@@ -14,7 +68,9 @@ The near-term goal is a compact deterministic core with one flagship biomedical 
 
 ## What this package is not
 
-`hybrid-ds-julia` is **not** intended to be a full pharmacometrics or NLME platform, a general hybrid-automata toolbox, or a broad symbolic mathematics system. It aims instead to be a focused, event-aware numerical layer for mechanistic QSP and PK/PD models—something that complements existing differential-equation and pharmacometric ecosystems rather than replacing them.
+`hybrid-ds-julia` is **not** intended to be a full pharmacometrics or NLME platform, a general hybrid-automata toolbox, or a broad symbolic mathematics system. It aims instead to be a focused, event-aware numerical layer for mechanistic QSP and PK/PD models—something that complements existing differential-equation and pharmacometric ecosystems.
+
+However, interoperability with established pharmacometric and QSP platforms is part of the longer-term vision. In particular, import and export pathways for models and event specifications from tools such as NONMEM, nlmixr2/RxODE, Pumas, and related ecosystems are being considered so that hybrid workflows can be explored without respecifying complex models from scratch.
 
 ## Why this matters
 
@@ -22,7 +78,7 @@ Many of the most important pharmacology questions are not only about **how much 
 
 In QSP and PK/PD, those questions appear whenever modelers need to compare regimens, understand relapse versus sustained control, explore toxicity management strategies, or represent adaptive treatment rules that depend on state, schedule, or biomarker thresholds.
 
-These are mainstream translational questions, but they are often handled numerically using workflows that implicitly assume the full model is globally smooth. That is often sufficient for coarse analyses, but it can become fragile when the scientific question depends directly on dose timing, event-triggered interventions, threshold logic, or other regime changes.
+These are mainstream translational questions, but they are often handled numerically using workflows that are sufficient for coarse analyses yet can become fragile when the scientific question depends directly on dose timing, event-triggered interventions, threshold logic, or other regime changes.
 
 `hybrid-ds-julia` is motivated by that gap. The biological questions are already central to QSP and PK/PD practice; what is often missing is a practical, domain-facing numerical layer that treats event structure as a first-class part of the model rather than as an awkward exception.
 
@@ -47,7 +103,7 @@ This project grew out of the observation that many advanced dynamical-systems me
 
 More broadly, methods that feel standard in one mathematical community are often not standard in nearby application domains. That gap appears clearly in immuno-oncology, QSP, and PK/PD, where mechanistic models are increasingly used for model-informed development but where event-aware sensitivities, impulsive updates, and hybrid treatment logic still need stronger workflow support than is commonly available in domain-facing tools.
 
-To reiterate, the core claim of `hybrid-ds-julia` is not that hybrid mathematics is new. It is that many translational modeling questions already have hybrid structure, and that making these methods usable in practice could improve how those questions are simulated, differentiated, and optimized.
+To reiterate, the core claim of `hybrid-ds-julia` is not that hybrid mathematics is new. It is that many translational modeling questions already have hybrid structure, and that making event-aware sensitivity propagation and trajectory optimization usable in practice could substantially improve how those questions are simulated and analyzed.
 
 ## Why QSP and PK/PD first
 
@@ -59,7 +115,7 @@ Representative examples include:
 - **Autoimmune and inflammatory disease models** with flare-remission dynamics, tapering, rescue therapy, or biomarker-triggered intervention rules.
 - **Mechanistic PK/PD models** with treatment switching, toxicity holds, dose delays, or state-triggered interventions.
 
-These are exactly the kinds of systems in which the state trajectory may remain continuous while the governing equations, treatment rules, or state updates change at event times. That structure suggests event-aware simulation, variational sensitivity propagation, multiple shooting, and automatic differentiation rather than treating the entire trajectory as if it were globally smooth.
+These are exactly the kinds of systems in which the state trajectory may remain continuous while the governing equations, treatment rules, or state updates change at event times.
 
 At the workflow level, most current QSP and PK/PD practice is built around general differential-equation, PBPK, and pharmacometric toolchains. `hybrid-ds-julia` is not meant to replace that ecosystem. Instead, it aims to complement it with a hybrid numerical layer for models where event structure materially affects simulation, sensitivities, optimization, or translational interpretation.
 
@@ -216,7 +272,7 @@ The same mathematical and computational ideas can be used across a range of mech
 
 ### QSP and PK/PD
 
-Many QSP and PK/PD models already contain hybrid structure in practice: dosing pulses, treatment holidays, state-dependent interventions, switching therapies, toxicity holds, and threshold-mediated biological responses. A package like `hybrid-ds-julia` is intended to make event-aware simulation, variational sensitivity propagation, and multiple shooting natural parts of the workflow for these models.
+In QSP and PK/PD, `hybrid-ds-julia` is intended to make event-aware simulation, variational sensitivity propagation, and multiple shooting natural parts of the workflow for models with dosing pulses, treatment holidays, toxicity holds, and threshold-mediated biological responses.
 
 This makes it easier to study how the timing and logic of interventions shape long-term outcomes such as remission, relapse, resistance, or sustained control. It also opens the door to more systematic optimization over dose, timing, and treatment rules rather than relying only on hand-picked regimen comparisons.
 
@@ -263,6 +319,8 @@ Related Julia ecosystem tools and references:
 - **[`BifurcationKit.jl`](https://github.com/bifurcationkit/BifurcationKit.jl)** — Julia tooling for bifurcation analysis.
 - **[`DynamicalSystems.jl`](https://github.com/JuliaDynamics/DynamicalSystems.jl)** — JuliaDynamics library for nonlinear dynamics and time-series analysis.
 - **[`HybridSystems.jl`](https://github.com/blegat/HybridSystems.jl)** — a general Julia interface for hybrid systems and hybrid automata, relevant as ecosystem context even though `hybrid-ds-julia` is intended to emphasize event-aware simulation, sensitivities, and optimization for mechanistic QSP and PK/PD models.
+
+As the package matures, selected connectors or translation layers to external platforms (for example, data/event formats compatible with NONMEM, nlmixr2/RxODE, or Pumas) may be added where they clearly support hybrid workflows without duplicating full NLME functionality.
 
 ## Roadmap
 
@@ -337,6 +395,8 @@ The next phase of `hybrid-ds-julia` should focus on turning the current mathemat
 Near-term development should remain narrow: one deterministic core, one flagship biomedical example, and one compact end-to-end workflow from model specification to simulation, sensitivities, and parameter- or schedule-facing analysis. That is likely more valuable than trying to cover every hybrid-system variant too early.
 
 Longer term, the package should expand in a staged way toward QSP-facing abstractions, differentiable hybrid simulation as a defining feature, selective stochastic and Bayesian extensions, and low-dimensional Filippov benchmarks used as serious numerical validation problems. At the same time, the repository should continue to evolve as both software and technical narrative, with worked examples, benchmark notes, and concise documentation that make the methodological identity of the project immediately clear.
+
+A natural part of that expansion is better interoperability with existing pharmacometric and QSP toolchains. Many current workflows are built around platforms such as NONMEM, nlmixr2/RxODE, Monolix, and Pumas, where dosing and other events are encoded via data records (EVID, AMT, TIME, MTIME, etc.) and conditional logic (IF/THEN/ELSE) rather than explicit hybrid jump maps. A future aim for `hybrid-ds-julia` is to provide import/export bridges that map those event representations into hybrid dynamical-system structures and back again, so that modelers can experiment with event-aware simulation, sensitivities, and optimization without abandoning their established NLME and QSP infrastructure or rewriting models by hand.
 
 ## Licensing and IP posture
 
