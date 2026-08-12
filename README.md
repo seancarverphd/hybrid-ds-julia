@@ -8,12 +8,13 @@ In many current workflows, dosing and other events are encoded via data tables a
 
 ## Table of contents
 
-- [Overview](#hybrid-ds-julia)
+- [Introduction](#hybrid-ds-julia)
 - [What this package is not](#what-this-package-is-not)
 - [Why this matters](#why-this-matters)
 - [Who is building this](#who-is-building-this)
 - [Motivation](#motivation)
 - [Why QSP and PK/PD first](#why-qsp-and-pkpd-first)
+- [AI-enabled hybrid modeling for translational pharmacology](#ai-enabled-hybrid-modeling-for-translational-pharmacology)
 - [Diversity and equity in workflows](#diversity-and-equity-in-workflows)
   - [Diversity in the population](#diversity-in-the-population)
   - [Equity in healthcare](#equity-in-healthcare)
@@ -25,10 +26,15 @@ In many current workflows, dosing and other events are encoded via data tables a
   - [Variational equations](#variational-equations)
   - [Multiple shooting](#multiple-shooting)
   - [Automatic differentiation](#automatic-differentiation)
+- [AI/ML mathematical extensions](#aiml-mathematical-extensions)
+  - [Mechanistic--neural hybrid systems](#mechanistic--neural-hybrid-systems)
+  - [Physics-informed neural networks](#physics-informed-neural-networks)
+  - [Neural hybrid automata](#neural-hybrid-automata)
+  - [Neural jump SDEs](#neural-jump-sdes)
 - [Test beds](#test-beds)
   - [First biomedical target](#first-biomedical-target)
   - [Next biomedical extensions](#next-biomedical-extensions)
-  - [Bayesian and stochastic extensions](#bayesian-and-stochastic-extensions)
+  - [Mechanistic stochastic and Bayesian extensions](#mechanistic-stochastic-and-bayesian-extensions)
   - [Filippov pseudo-Hopf normal form](#filippov-pseudo-hopf-normal-form)
 - [Other disease applications](#other-disease-applications)
 - [Example applications](#example-applications)
@@ -43,7 +49,7 @@ In many current workflows, dosing and other events are encoded via data tables a
   - [Stage 1 — Narrow deterministic core](#stage-1--narrow-deterministic-core)
   - [Stage 2 — Flagship biomedical workflow](#stage-2--flagship-biomedical-workflow)
   - [Stage 3 — QSP-facing workflows](#stage-3--qsp-facing-workflows)
-  - [Stage 4 — Stochastic and Bayesian extensions](#stage-4--stochastic-and-bayesian-extensions)
+  - [Stage 4 — Mechanistic stochastic and Bayesian extensions](#stage-4--mechanistic-stochastic-and-bayesian-extensions)
   - [Stage 5 — Filippov and benchmark suite](#stage-5--filippov-and-benchmark-suite)
   - [Stage 6 — Refinement and specialization](#stage-6--refinement-and-specialization)
   - [Stage 7 — Interoperability and import/export bridges](#stage-7--interoperability-and-importexport-bridges)
@@ -118,6 +124,14 @@ Representative examples include:
 These are exactly the kinds of systems in which the state trajectory may remain continuous while the governing equations, treatment rules, or state updates change at event times.
 
 At the workflow level, most current QSP and PK/PD practice is built around general differential-equation, PBPK, and pharmacometric toolchains. `hybrid-ds-julia` is not meant to replace that ecosystem. Instead, it aims to complement it with a hybrid numerical layer for models where event structure materially affects simulation, sensitivities, optimization, or translational interpretation.
+
+## AI-enabled hybrid modeling for translational pharmacology
+
+`hybrid-ds-julia` is primarily an event-aware numerical layer for mechanistic QSP and PK/PD models. Its longer-term relevance to AI-enabled model-informed drug development lies in combining explicit biological and clinical structure with learned components where data are informative and mechanistic knowledge is incomplete.
+
+Potential directions include mechanistic--neural hybrid models, in which a neural network represents an uncertain biological interaction or model-discrepancy term; physics-informed neural networks for latent-state reconstruction and parameter learning from sparse data; neural hybrid automata for data-driven discovery of candidate modes and transition structure; and neural jump SDEs for stochastic event-rich processes. These methods could support regimen optimization, translational prediction, virtual-patient updating, and decision support while retaining explicit representations of known doses, toxicity thresholds, treatment holds, therapy switches, and other clinically meaningful event logic.
+
+The intended role of `hybrid-ds-julia` is not to replace mechanistic pharmacology with a black-box predictor. Instead, it is to provide the event-aware simulation, sensitivity, and optimization structure needed to connect learned components to mechanistic models in a way that remains interpretable, testable, and relevant to treatment decisions. The mathematical implications, limitations, and possible implementations of these approaches are discussed in [AI/ML mathematical extensions](#aiml-mathematical-extensions).
 
 ## Diversity and equity in workflows
 
@@ -220,6 +234,62 @@ This often yields a better-conditioned trajectory and sensitivity framework than
 
 From a workflow perspective, automatic differentiation is part of what can make hybrid simulation usable in practice rather than only analyzable on paper.
 
+## AI/ML mathematical extensions
+
+The deterministic framework above provides the mathematical foundation for the following possible AI/ML extensions. These are research directions rather than requirements of the initial package scope; the near-term priority remains a transparent, validated deterministic hybrid core.
+
+### Mechanistic--neural hybrid systems
+
+A natural later extension of `hybrid-ds-julia` is a mechanistic--neural hybrid model, including variants often described as neural ordinary differential equations or universal differential equations. In a pure neural ODE, a neural network defines all or most of the continuous-time vector field. In a mechanistic--neural hybrid, the known pharmacology remains explicit and a neural network represents a limited, declared source of uncertainty: an unmodeled biological interaction, a latent process, an observation mechanism, or a model-discrepancy term.
+
+A representative hybrid-regime formulation is:
+
+```text
+dx/dt = f_k(x, t, p) + g_{θ,k}(x, t, p)
+```
+
+Here `f_k` is the mechanistic vector field in regime `k`, `g_{θ,k}` is a neural-network correction with weights `θ`, and scheduled doses, jump maps, event surfaces, and treatment rules remain explicit. For example, a tumor--immune model could retain its PK structure, dosing pulses, toxicity guard, and treatment-hold logic while learning an uncertain immune-mediated killing term, resistance mechanism, or latent biomarker process.
+
+The main difference between this approach and a conventional mechanistic hybrid model is that the continuous biological dynamics are no longer assumed to be completely specified. The neural component adds flexibility within each regime. It does not, by itself, discover or replace the hybrid structure: a known toxicity threshold should still be encoded as a guard; a known dose should still be represented as a scheduled jump; and a known therapy change should still be represented as a mode transition or reset. This separation allows the neural component to improve fit or represent missing biology without sacrificing the interpretability of clinical decision logic.
+
+The numerical ideas underlying `hybrid-ds-julia` extend directly to this setting. Between events, variational equations use the Jacobian of the combined field, including derivatives of the neural correction with respect to state, mechanistic parameters, and possibly neural-network weights. Automatic differentiation can provide these derivatives. At a scheduled reset, sensitivity propagation still uses the jump-map Jacobian. At a state-triggered event, the saltation update still accounts for perturbation-induced shifts in event time. Thus, neural components do not make event-aware sensitivities unnecessary; they make it more important to distinguish uncertainty in continuous biology from explicitly modeled intervention structure.
+
+ReLU-based neural networks introduce an additional piecewise-smooth structure. Each activation boundary is a codimension-one surface in state space, and the network has a distinct affine representation within each region of fixed activation pattern. When a ReLU network contributes only to a continuous vector field, a transverse activation crossing generally does not cause a state jump: ReLU is continuous, and the corresponding saltation update is the identity when the full vector field is continuous across that boundary. However, the vector-field Jacobian changes, so variational integration must continue using the Jacobian in the newly active region.
+
+The principal pain points are the large number of possible activation regions in deep ReLU networks, nonunique classical derivatives at activation boundaries, and loss of ordinary differentiability at grazing events, simultaneous activation changes, or event-sequence changes. These issues can complicate adjoints, Newton iterations, continuation, and bifurcation analysis. A practical initial design would use smooth activations, such as softplus, tanh, or Swish, for neural corrections to continuous biological dynamics, while reserving explicit guards, resets, and mode transitions for known clinical events. ReLU neural ODEs and generalized sensitivity analysis remain an important later research direction, especially where learned piecewise-linear structure is itself scientifically informative.
+
+### Physics-informed neural networks
+
+Physics-informed neural networks, or PINNs, use mechanistic equations as constraints during neural-network training. Rather than treating an ODE solver as the sole means of generating a trajectory, a PINN represents an unknown state trajectory with a neural network and penalizes deviations from governing equations, observed data, and initial or boundary conditions. In a QSP or PK/PD setting, this can help reconstruct latent state trajectories and estimate parameters from sparse, irregularly sampled, noisy, or partially observed data.
+
+The difference from a mechanistic--neural hybrid is the role of the neural network. In a mechanistic--neural hybrid, the network is part of the differential equation itself and represents an unknown term in the evolving dynamics. In a PINN, the network more often represents the solution trajectory or a parameterized approximation to it, while the mechanistic ODE remains a constraint in the training objective. The distinction is not absolute: a workflow can use both a learned correction term and physics-informed training.
+
+A hybrid physics-informed formulation must extend the usual smooth ODE residual to account for events. At scheduled resets, the learned trajectory must satisfy the jump map; at state-triggered events, it must represent both the guard condition and the possibility that perturbations alter event time. Thus, an event-rich QSP model should be organized around smooth segments, jump conditions, and mode-dependent dynamics rather than one global smooth residual. This is a natural point of contact with the event-aware simulation, sensitivity, and multiple-shooting abstractions proposed by `hybrid-ds-julia`.
+
+Pain points include sensitivity to loss weighting, network architecture, collocation-point placement, stiffness, parameter nonidentifiability, and competing data and physics residuals. Sharp transients, multiple time scales, and switching boundaries are especially challenging for a single globally smooth network approximation. A later research direction is an event-aware or segmented PINN workflow in which `hybrid-ds-julia` defines intervals, guards, resets, and hybrid sensitivities while mode-conditioned neural models reconstruct latent trajectories from sparse data.
+
+### Neural hybrid automata
+
+Neural hybrid automata use neural networks or other learned components to infer modes, mode-specific dynamics, guards, transitions, and sometimes reset behavior from data. Instead of starting with a fully specified set of treatment regimes and clinical rules, a neural hybrid automaton attempts to identify some or all of the discrete structure that explains observed trajectories.
+
+This differs from the preceding approaches in the amount of hybrid structure learned from data. A mechanistic--neural hybrid assumes clinically meaningful modes, guards, and resets are known while learning limited continuous-time corrections. A PINN normally assumes governing equations are known and uses them to constrain reconstruction. A neural hybrid automaton can instead learn the mode decomposition and transition structure themselves. It offers greater flexibility, but correspondingly weaker direct interpretability unless learned modes can be validated and given clear biological or clinical meaning.
+
+In pharmacology, mode labels and transition rules may be confounded with unobserved covariates, measurement noise, patient heterogeneity, missing doses, or a misspecified continuous model. Hard learned mode decisions also complicate gradient-based fitting, uncertainty quantification, and counterfactual regimen analysis. A promising use in `hybrid-ds-julia` is therefore model discovery and hypothesis generation: data-driven methods could propose candidate modes or transition mechanisms, after which scientifically credible candidates could be translated into explicit hybrid models with interpretable guards, jump maps, and sensitivity calculations.
+
+### Neural jump SDEs
+
+Neural jump stochastic differential equations combine continuous-time learned dynamics with stochastic fluctuations and random jump events. A representative form is:
+
+```text
+dx = f_θ(x, t) dt + σ_θ(x, t) dW_t + J_θ(x, t) dN_t.
+```
+
+Here `W_t` represents continuous random variation and `N_t` a counting process for random events. Neural components may represent the drift, diffusion, jump size, jump intensity, or latent event process. For pharmacology, such models could eventually represent irregular adherence, unrecorded interventions, stochastic toxicity or flare events, and cellular or molecular variability.
+
+Neural jump SDEs should be distinguished from the mechanistic stochastic hybrid models described in the test-bed section below. In a mechanistic stochastic model, the state variables, drift, diffusion form, scheduled dose maps, jump maps, event rules, and observation model are specified from biological and pharmacological knowledge; data estimate parameters, latent states, and uncertainty. In a neural jump SDE, one or more of these functions is represented by a trainable neural network. Compared with neural hybrid automata, transitions need not be deterministic functions of guards; compared with PINNs, the model represents a distribution over paths rather than only a constrained deterministic trajectory.
+
+The technical challenges are substantial. Inference may require particle filtering, sequential Monte Carlo, variational inference, or repeated simulation for approximate likelihood evaluation. It can be difficult to distinguish random jumps from observation noise, unmeasured covariates, model discrepancy, or an inadequately specified deterministic event rule. Gradient estimates can be high variance when jump times change. The appropriate future path is staged: first establish reliable deterministic event-aware methods, then add one narrow mechanistic stochastic model class, and only later evaluate learned jump mechanisms when available data justify their added flexibility.
+
 ## Test beds
 
 ### First biomedical target
@@ -238,11 +308,15 @@ The Zhao model is a strong first flagship because it is genuinely hybrid in a wa
 
 The next stage is to extend that model upward in dimension without losing its threshold-driven hybrid logic. A first generalization would add an explicit chemotherapy concentration variable, producing a 3D hybrid model that retains Zhao’s event structure while introducing a PK-like state absent from the original formulation. From there, the model can be expanded to include drug-resistant tumor subpopulations and eventually multiple chemotherapy agents on distinct schedules, yielding 4D and 6D variants that incorporate features present in Pang et al., such as explicit drug concentrations, resistant subpopulations, and multidrug treatment structure. This creates a coherent model ladder for `hybrid-ds-julia`: Zhao as the entry-point flagship, followed by increasingly realistic hybrid QSP-style models that stress-test the same numerical machinery in settings closer to PK/PD, resistance, and treatment optimization.
 
-### Bayesian and stochastic extensions
+### Mechanistic stochastic and Bayesian extensions
 
-A natural later extension of `hybrid-ds-julia` is to Bayesian inference for stochastic or partially observed hybrid models. In a sequential Bayesian workflow, the posterior from one inference step becomes the prior for the next, while the model dynamics determine how new data update the likelihood; this is a standard perspective in sequential Bayesian updating and related Monte Carlo methods.
+A natural later extension of `hybrid-ds-julia` is a mechanistically specified stochastic hybrid model. In this approach, the modeler specifies the biological state variables, continuous drift structure, diffusion or process-noise model, scheduled dose maps, state-triggered event rules, and observation model in advance. The unknowns generally include parameters, patient-level effects, latent states, and uncertainty about competing mechanistic hypotheses—not the basic mathematical form of the dynamics.
 
-For stochastic models, the smooth ODE dynamics between events are replaced by a stochastic differential equation (SDE) that generates continuous but typically nowhere differentiable sample paths between jumps. Impulsive dose times, threshold-triggered jumps, and regime switches remain explicitly represented in the hybrid structure, but the continuous evolution between events is now driven by drift and diffusion terms rather than a deterministic vector field. In that setting, the solver would propagate sample paths between events, apply jump maps at intervention times, and use the resulting transition law or predictive distribution to evaluate likelihood contributions for new observations. A natural goal in such workflows is to compute not only sensitivities of individual sample paths, but also sensitivities of moments or summary functionals (for example, mean exposure, variance of biomarker trajectories, or event-time distributions) with respect to parameters and schedule design. In practice, these stochastic sensitivities would be obtained from variational SDEs for pathwise parameter derivatives and from Monte Carlo estimators (pathwise-gradient or score-function/Malliavin-weight methods) for the sensitivities of expectations and other statistics of interest.
+For example, a stochastic tumor–immune model could retain explicit tumor-growth and immune-cell interactions, pharmacokinetic states, scheduled treatment pulses, and toxicity-triggered holds while using an SDE to represent intrinsic biological variability or unobserved patient-level fluctuations. Bayesian or particle-based inference could then estimate parameters and update uncertainty as new measurements become available. This differs from the neural jump SDE approaches discussed in [AI/ML mathematical extensions](#aiml-mathematical-extensions), in which some or all of the drift, diffusion, jump-size, or event-intensity functions are represented by learned neural components.
+
+In a sequential Bayesian workflow, the posterior from one inference step becomes the prior for the next, while the model dynamics determine how new data update the likelihood. This is a standard perspective in sequential Bayesian updating and related Monte Carlo methods.
+
+For stochastic models, the smooth ODE dynamics between events are replaced by a stochastic differential equation (SDE) that generates continuous but typically nowhere differentiable sample paths between jumps. Impulsive dose times, threshold-triggered jumps, and regime switches remain explicitly represented in the hybrid structure, but the continuous evolution between events is now driven by drift and diffusion terms rather than a deterministic vector field. In that setting, the solver would propagate sample paths between events, apply jump maps at intervention times, and use the resulting transition law or predictive distribution to evaluate likelihood contributions for new observations. A natural goal in such workflows is to compute not only sensitivities of individual sample paths, but also sensitivities of moments or summary functionals—for example, mean exposure, variance of biomarker trajectories, or event-time distributions—with respect to parameters and schedule design. In practice, these stochastic sensitivities would be obtained from variational SDEs for pathwise parameter derivatives and from Monte Carlo estimators, including pathwise-gradient or score-function/Malliavin-weight methods, for sensitivities of expectations and other statistics of interest.
 
 This suggests a Bayesian extension layer in which hybrid simulation is combined with MCMC, sequential tempered MCMC, or particle-filtering ideas. The practical role of `hybrid-ds-julia` in such a workflow would be to provide event-aware deterministic or stochastic simulation, expose the hybrid structure cleanly enough to support likelihood construction, and eventually enable sensitivity-aware inference for parameter learning, schedule learning, or virtual-patient updating in event-rich mechanistic models.
 
@@ -260,9 +334,9 @@ The first application and tests of `hybrid-ds-julia` will be in immuno-oncology,
 
 In **cardiometabolic disease**, especially diabetes and obesity, the **continuous part** is glucose, insulin, and broader metabolic-state evolution over time, while the **discrete part** is meals, insulin boluses, dose changes, hypoglycemia rescue actions, and other threshold-triggered interventions. Hybrid modeling matters here because glycemic control questions hinge on both gradual metabolic dynamics and abrupt, rule-driven actions that reshape those dynamics.
 
-In **neurology and CNS disease**, the **continuous part** is slow disease progression and biomarker evolution (for example, neurodegeneration or lesion burden), while the **discrete part** is clinical decision logic: regimen changes, rescue interventions, stage transitions, and other state-dependent treatment updates. Hybrid modeling matters here because episodic decisions, relapses, and threshold-based escalations punctuate an otherwise gradual trajectory.
+In **neurology and CNS disease**, the **continuous part** is slow disease progression and biomarker evolution—for example, neurodegeneration or lesion burden—while the **discrete part** is clinical decision logic: regimen changes, rescue interventions, stage transitions, and other state-dependent treatment updates. Hybrid modeling matters here because episodic decisions, relapses, and threshold-based escalations punctuate an otherwise gradual trajectory.
 
-In **immunology and inflammation**, the **continuous part** is the inflammatory and immune-state dynamics (cytokines, cell populations, tissue damage), while the **discrete part** is flare-triggered rescue therapy, tapering decisions, switching between treatment strategies, and agent-based or cellular events that induce regime changes. Hybrid modeling matters here because flare–remission patterns are shaped by both ongoing immune dynamics and intermittent, guideline- or state-driven interventions.
+In **immunology and inflammation**, the **continuous part** is the inflammatory and immune-state dynamics—cytokines, cell populations, and tissue damage—while the **discrete part** is flare-triggered rescue therapy, tapering decisions, switching between treatment strategies, and agent-based or cellular events that induce regime changes. Hybrid modeling matters here because flare–remission patterns are shaped by both ongoing immune dynamics and intermittent, guideline- or state-driven interventions.
 
 In **infectious disease, especially tuberculosis**, the **continuous part** is within-host infection, immune response, and pathogen-growth dynamics, while the **discrete part** is combination therapy, adherence or missed-dose events, resistance-triggered regimen changes, and latent-to-active transitions that switch the system into new regimes. Hybrid modeling matters here because long-term outcomes depend critically on when therapy is taken, when resistance emerges, and when latent infection reactivates—not just on average exposure.
 
@@ -322,7 +396,7 @@ Related Julia ecosystem tools and references:
 - **[`DynamicalSystems.jl`](https://github.com/JuliaDynamics/DynamicalSystems.jl)** — JuliaDynamics library for nonlinear dynamics and time-series analysis.
 - **[`HybridSystems.jl`](https://github.com/blegat/HybridSystems.jl)** — a general Julia interface for hybrid systems and hybrid automata, relevant as ecosystem context even though `hybrid-ds-julia` is intended to emphasize event-aware simulation, sensitivities, and optimization for mechanistic QSP and PK/PD models.
 
-As the package matures, selected connectors or translation layers to external platforms (for example, data/event formats compatible with NONMEM, nlmixr2/RxODE, or Pumas) may be added where they clearly support hybrid workflows without duplicating full NLME functionality.
+As the package matures, selected connectors or translation layers to external platforms—for example, data/event formats compatible with NONMEM, nlmixr2/RxODE, or Pumas—may be added where they clearly support hybrid workflows without duplicating full NLME functionality.
 
 ## Roadmap
 
@@ -360,16 +434,18 @@ Primary outcome: a compact end-to-end demonstration stack that makes the package
 - Add objective functions and workflows for schedule comparison, schedule optimization, and event-aware parameter estimation.
 - Support virtual-patient style parameter exploration and uncertainty analysis in event-rich mechanistic models.
 - Improve ergonomics so the package helps answer pharmacology questions that are decision-facing rather than purely mathematical.
+- Explore mechanistic--neural correction terms or physics-informed state reconstruction only after the deterministic event-aware workflow is stable and benchmarked.
 
 Primary outcome: a package that begins to look like useful QSP and PK/PD workflow infrastructure rather than only a mathematical prototype.
 
-### Stage 4 — Stochastic and Bayesian extensions
+### Stage 4 — Mechanistic stochastic and Bayesian extensions
 
-- Identify one stochastic hybrid model class that is genuinely relevant for pharmacology.
+- Identify one mechanistically specified stochastic hybrid model class that is genuinely relevant for pharmacology.
 - Provide a clean event-aware simulation interface for that class, including jumps or regime changes at predictable or state-dependent times.
 - Replace the deterministic ODE between events with an SDE for the continuous part, so that the interface can generate continuous but nowhere differentiable sample paths while still respecting impulsive doses and threshold-triggered jumps.
 - Connect that simulation layer to one concrete inference workflow, such as sequential Bayesian updating or particle-based likelihood evaluation.
-- Explore sensitivity-aware inference for both pathwise quantities and moments or summary functionals (for example, expectations of exposure, biomarker trajectories, or event times), using variational SDEs for pathwise parameter derivatives and Monte Carlo estimators (pathwise-gradient or score-function/Malliavin-weight methods) for derivatives of expectations, but only where the deterministic abstractions and numerical stability are already robust enough to support it.
+- Explore sensitivity-aware inference for both pathwise quantities and moments or summary functionals—for example, expectations of exposure, biomarker trajectories, or event times—using variational SDEs for pathwise parameter derivatives and Monte Carlo estimators, including pathwise-gradient or score-function/Malliavin-weight methods, for derivatives of expectations, but only where the deterministic abstractions and numerical stability are already robust enough to support it.
+- Evaluate neural jump SDE methods only as a later, optional extension when data justify learning an uncertain stochastic mechanism rather than specifying it mechanistically.
 
 Primary outcome: a staged stochastic extension that broadens the package without diluting its core design.
 
@@ -387,6 +463,7 @@ Primary outcome: a stronger testing identity grounded in serious hybrid-systems 
 - Harden numerics, including step-size control, event-detection tolerances, and sensitivity robustness.
 - Improve documentation strategy through concise conceptual docs, worked examples, benchmark notes, and short application essays.
 - Explore additional autoimmune, inflammatory, or PK/PD examples where hybrid structure is genuinely informative.
+- Investigate ReLU-based piecewise-smooth neural ODEs, generalized sensitivities, and hybrid continuation only as specialized research extensions, with explicit treatment of activation-boundary degeneracies.
 - Revisit licensing and packaging based on collaboration opportunities and the eventual institutional home of the project.
 
 Primary outcome: a research-grade codebase and documentation set that clearly communicates a distinctive methodological identity.
@@ -394,7 +471,7 @@ Primary outcome: a research-grade codebase and documentation set that clearly co
 ### Stage 7 — Interoperability and import/export bridges
 
 - Design and implement import/export bridges between `hybrid-ds-julia` and established pharmacometric and QSP platforms such as NONMEM, nlmixr2/RxODE, Monolix, and Pumas.
-- Map data-driven event specifications (for example, EVID, AMT, TIME, MTIME, CMT, RATE, II, ADDL, SS) and IF/THEN dosing logic into explicit hybrid dynamical-system structures (piecewise-smooth flows, jump maps, and saltation matrices), and provide a way to translate hybrid models back into those platforms’ formats where appropriate.
+- Map data-driven event specifications—for example, EVID, AMT, TIME, MTIME, CMT, RATE, II, ADDL, and SS—and IF/THEN dosing logic into explicit hybrid dynamical-system structures such as piecewise-smooth flows, jump maps, and saltation matrices, and provide a way to translate hybrid models back into those platforms’ formats where appropriate.
 - Ensure that complex models do not need to be respecified by hand to move between platforms; instead, use these bridges to allow modelers to experiment with event-aware simulation, sensitivities, and optimization on top of their existing NLME and QSP infrastructure.
 - Treat interoperability as a maintained feature rather than a one-off conversion script, with tests and examples that demonstrate round-tripping of representative QSP and PK/PD models.
 
