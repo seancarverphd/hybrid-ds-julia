@@ -1973,16 +1973,13 @@ The immediate objective is to demonstrate a complete and credible workflow, not 
 5. Compare the results with simpler finite-difference or single-shooting approaches.
 6. Document where hybrid-aware methods materially improve reliability, conditioning, or interpretability.
 
-## `docs/readme-parts/09-further-reading.md`
-
-```md
 ## Further reading
 
 This list is intended as a starting point rather than a comprehensive bibliography. It includes foundational hybrid-systems references, QSP and PK/PD context, sensitivity and automatic-differentiation methods, AI-enabled mechanistic modeling, and application areas relevant to the package.
 
 ### Related hybrid-systems papers in other domains
 
-- Carver, S., Guckenheimer, J., & Cowan, N. J. (2009). *Lateral stability of the spring-loaded inverted pendulum model of running and the influence of step-to-step transition dynamics*. Chaos. A preprint is available through [the LIMBS website](https://limbs.lcsr.jhu.edu/wp-content/papercite-data/pdf/carverlateral2009.pdf). This paper is relevant because it uses hybrid-system computations in which accurate event handling, boundary-value methods, and structured sensitivity propagation are essential.
+- Carver, S., Guckenheimer, J., & Cowan, N. J. (2009). *Lateral Stability of the Spring-Mass Hopper Suggests a Two Step Control Strategy for *. Chaos. A preprint is available through [the LIMBS website](https://limbs.lcsr.jhu.edu/wp-content/papercite-data/pdf/carverlateral2009.pdf). This paper is relevant because it uses hybrid-system computations in which accurate event handling, boundary-value methods, and structured sensitivity propagation are essential.
 - di Bernardo, M., Budd, C. J., Champneys, A. R., & Kowalczyk, P. (2008). *Piecewise-smooth Dynamical Systems: Theory and Applications*. Springer. A broad introduction to discontinuity-induced bifurcations, switching systems, and piecewise-smooth dynamics.
 - Goebel, R., Sanfelice, R. G., & Teel, A. R. (2012). *Hybrid Dynamical Systems: Modeling, Stability, and Robustness*. Princeton University Press. A foundational treatment of hybrid-system modeling and analysis.
 - van der Schaft, A. J., & Schumacher, H. (2000). *An Introduction to Hybrid Dynamical Systems*. Springer. A useful reference for systems that combine continuous dynamics and discrete transitions.
@@ -2078,4 +2075,3 @@ These references motivate work in which `hybrid-ds-julia` represents threshold-t
 - Jones, J. W., et al. (2003). The DSSAT cropping system model. *European Journal of Agronomy*, 18(3–4), 235–265. A foundational reference for crop-system simulation.
 
 These references provide context for using hybrid event-aware methods in crop growth, irrigation, fertilization, canopy competition, and trait-optimization problems where the timing of discrete management actions can be as important as the continuous biological dynamics.
-```
