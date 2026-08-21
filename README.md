@@ -1,439 +1,2043 @@
 # hybrid-ds-julia
 
-## Introduction
+A Julia-focused research-software project for building, simulating, analyzing, and eventually optimizing hybrid dynamical-systems models. The intended focus is mechanistic ODE models whose continuous dynamics are altered by discrete events such as doses, missed doses, treatment holds, toxicity thresholds, therapy switches, measurements, controller transitions, and other state- or time-triggered interventions.
 
-`hybrid-ds-julia` is an event-aware numerical layer for mechanistic QSP and PK/PD models that need to represent real treatment logic: dosing pulses, treatment holidays, toxicity holds, threshold-triggered interventions, therapy switches, and other hybrid structure. It is not a replacement for established pharmacometric platforms such as NONMEM, nlmixr2/RxODE, Monolix, or Pumas; instead, it is designed to sit alongside them and address numerical issues that arise when models contain many events, jumps, and regime changes.
+**Work in progress.** `hybrid-ds-julia` and this README are evolving research-software and documentation projects. The mathematical formulations, implementation plans, application discussions, examples, benchmarks, and references should be treated as provisional unless explicitly identified as implemented, tested, or literature-verified. Interfaces, capabilities, claims, and priorities may change as the package develops and as expert feedback and additional verification are incorporated.
 
-In many current workflows, dosing and other events are encoded via data tables and IF/THEN logic, with sensitivities obtained by finite differences and trajectories treated as if they were globally smooth. Around events, that combination can lead to ill-conditioned gradients, brittle schedule optimization, and noisy parameter sensitivities. By contrast, `hybrid-ds-julia` is built to propagate variational equations across piecewise-smooth flows, apply analytically derived jump and saltation maps at event times, and use multiple shooting to stabilize trajectories and boundary-value computations. The aim is to make those hybrid dynamical-systems tools practically usable for decision-focused pharmacology, so that modelers can study dose, timing, and treatment logic without re-specifying complex models from scratch or fighting fragile numerics around events.
+This README is intentionally detailed and modular. Use the table of contents to navigate directly to the mathematical methods, implementation details, computational considerations, application domains, or examples most relevant to your work; readers do not need to read the document linearly.
+
+## Overview
+
+Many scientific and engineering systems evolve continuously most of the time but change qualitatively when discrete events occur. A drug concentration may decay continuously until the next dose. A toxicity state may rise until treatment is held. A tumor may evolve under one therapy until surveillance triggers a treatment holiday or switch. A manufacturing process may follow mass-balance dynamics until a feed change, harvest, fault, or cleaning transition. A robot or animal may follow continuous dynamics until contact, lift-off, a perturbation, or a controller switch.
+
+These are hybrid dynamical systems: systems combining continuous-time dynamics with explicit discrete events, mode changes, thresholds, and reset maps.
+
+`hybrid-ds-julia` aims to make this structure explicit and reproducible. Rather than hiding treatment schedules, policy thresholds, or mode changes in ad hoc code, a model should state:
+
+- The continuous state variables and their governing equations;
+- The model parameters and inputs;
+- The discrete modes that change the governing dynamics;
+- The scheduled and state-triggered event conditions;
+- The reset maps, parameter changes, or policy changes caused by events;
+- The observations, objectives, and constraints used for analysis.
+
+The initial motivation is hybrid QSP and PK/PD modeling, especially models involving repeated dosing, adherence scenarios, treatment interruptions, treatment holds, toxicity thresholds, monitoring rules, and adaptive interventions. The same formal structure can be useful in other areas when the continuous state, event semantics, and decision problem are sufficiently well specified.
+
+## Project goals
+
+The project is intended to support a progression from transparent simulation to progressively more demanding analysis.
+
+Near-term goals include:
+
+- Clear representations of continuous ODE dynamics, modes, guards, scheduled events, and reset maps;
+- Reproducible event-aware simulation and event logging;
+- Test beds involving dosing, threshold-triggered intervention, treatment holds, and therapy switching;
+- Diagnostic tools for event timing, event order, repeated events, and numerical failure;
+- A Julia-native workflow compatible with the broader SciML ecosystem where appropriate.
+
+Longer-term goals include:
+
+- Directional variational equations and forward parameter sensitivities;
+- Saltation-aware event derivatives;
+- Multiple shooting for long, unstable, or event-sensitive trajectories;
+- Event-compatible adjoint methods where mathematically and numerically justified;
+- Calibration, uncertainty quantification, constrained optimization, and policy comparison;
+- Parallel ensembles, distributed execution, and large-scale benchmarking;
+- Carefully scoped applications in biomedical, scientific, and engineering domains.
+
+The package should not be interpreted as a replacement for domain-specific simulators, clinical judgment, regulatory pharmacometrics, specialized power-system tools, detailed multibody robotics platforms, neural simulators, or validated production systems. Its intended role is complementary: a transparent framework for mechanistic ODE-and-event models when the user can state the relevant dynamics and transitions directly.
+
+## Why hybrid models?
+
+A smooth ODE model has the form:
+
+\[
+\dot{x}(t)=f(x(t),t,\theta),
+\]
+
+where \(x(t)\) is a continuous state and \(\theta\) is a parameter vector.
+
+A hybrid model additionally has a discrete mode \(q(t)\), event conditions, and updates:
+
+\[
+\dot{x}(t)=f_{q(t)}(x(t),t,\theta,u(t)),
+\]
+
+with an event guard:
+
+\[
+g_i(x(t),t,\theta)=0,
+\]
+
+and an event update such as:
+
+\[
+x^+=R_i(x^-,t,\theta),
+\qquad
+q^+=T_i(q^-,x^-,t).
+\]
+
+This framework can represent:
+
+- An instantaneous bolus dose;
+- An infusion start, stop, or rate change;
+- A missed dose or adherence interruption;
+- A treatment hold caused by toxicity;
+- A treatment restart after a safety state recovers;
+- A threshold-driven therapy switch;
+- A contact or impact event;
+- A controller transition;
+- A failure, maintenance, or restoration event;
+- A scheduled or state-triggered experiment perturbation.
+
+The main benefit is not simply that discrete events can be simulated. It is that event conditions, event order, reset maps, and mode changes are explicit mathematical components of the model and can be logged, tested, analyzed, and—when conditions permit—differentiated or optimized.
+
+## Intended users and use cases
+
+The project is aimed at users who have or can formulate a mechanistic continuous-time model and need to represent events as part of the model rather than as informal external bookkeeping.
+
+Potential users include:
+
+- Researchers building PK/PD, QSP, infectious-disease, oncology, immunology, or treatment-control models;
+- Scientists studying reduced-order models of physiology, behavior, sensorimotor control, or adaptation;
+- Engineers working with event-driven process, energy, thermal, mechanical, or control models;
+- Operations researchers whose systems include both meaningful continuous states and discrete decisions;
+- Developers who need transparent event semantics, reproducible event logs, and sensitivity-aware hybrid simulation.
+
+Potential questions include:
+
+- How do different dosing or adherence schedules alter drug exposure and response?
+- When should a threshold-triggered treatment hold be activated or released?
+- How sensitive is a predicted event time to a parameter, initial condition, or measurement delay?
+- When does a control or treatment policy become unstable, unsafe, or prone to chattering?
+- How do alternative monitoring or switching rules compare under uncertainty?
+- What measurements or perturbations best distinguish competing mechanistic hypotheses?
+
+The package is not inherently appropriate merely because a problem has discrete events. It is most useful when the continuous state model, event logic, available measurements, and intended inference or decision problem can be stated and validated responsibly.
 
 ## Table of contents
 
-- [Introduction](#hybrid-ds-julia)
-- [What this package is not](#what-this-package-is-not)
-- [Why this matters](#why-this-matters)
-- [Who is building this](#who-is-building-this)
-- [Motivation](#motivation)
-- [Why QSP and PK/PD first](#why-qsp-and-pkpd-first)
-- [AI-enabled hybrid modeling for translational pharmacology](#ai-enabled-hybrid-modeling-for-translational-pharmacology)
-- [Diversity and equity in workflows](#diversity-and-equity-in-workflows)
-  - [Diversity in the population](#diversity-in-the-population)
-  - [Equity in healthcare](#equity-in-healthcare)
-- [Current direction](#current-direction)
-- [Current status](#current-status)
+- [Overview](#overview)
+- [Project goals](#project-goals)
+- [Why hybrid models?](#why-hybrid-models)
+- [Intended users and use cases](#intended-users-and-use-cases)
+- [Scope, authorship, and verification status](#scope-authorship-and-verification-status)
 - [Mathematical approach](#mathematical-approach)
-  - [Piecewise-smooth formulation](#piecewise-smooth-formulation)
-  - [Jump phenomena and impulsive updates](#jump-phenomena-and-impulsive-updates)
-  - [Variational equations](#variational-equations)
-  - [Multiple shooting](#multiple-shooting)
+  - [Continuous dynamics, modes, and events](#continuous-dynamics-modes-and-events)
+  - [Scheduled and state-triggered events](#scheduled-and-state-triggered-events)
+  - [Event maps and hybrid semantics](#event-maps-and-hybrid-semantics)
+  - [Hybrid trajectories and measurements](#hybrid-trajectories-and-measurements)
+  - [Dosing, pulses, and treatment holds](#dosing-pulses-and-treatment-holds)
+  - [Threshold policies and mode-dependent control](#threshold-policies-and-mode-dependent-control)
+  - [Event logging and reproducibility](#event-logging-and-reproducibility)
+  - [Numerical considerations near events](#numerical-considerations-near-events)
+  - [Validation of hybrid models](#validation-of-hybrid-models)
+- [Computational scaling, event complexity, and practical compute budgets](#computational-scaling-event-complexity-and-practical-compute-budgets)
+  - [Model notation and baseline cost](#model-notation-and-baseline-cost)
+  - [What makes an event difficult?](#what-makes-an-event-difficult)
+  - [Jacobians, variational flow, and O(n²) state equations](#jacobians-variational-flow-and-on2-state-equations)
+  - [Forward parameter sensitivities](#forward-parameter-sensitivities)
+  - [Saltation-aware hybrid derivatives](#saltation-aware-hybrid-derivatives)
   - [Automatic differentiation](#automatic-differentiation)
-- [AI/ML mathematical extensions](#aiml-mathematical-extensions)
-  - [Mechanistic--neural hybrid systems](#mechanistic--neural-hybrid-systems)
-  - [Physics-informed neural networks](#physics-informed-neural-networks)
-  - [Neural hybrid automata](#neural-hybrid-automata)
-  - [Neural jump SDEs](#neural-jump-sdes)
+  - [Adjoint sensitivities](#adjoint-sensitivities)
+  - [Multiple shooting](#multiple-shooting)
+  - [Event count, event structure, and tractability](#event-count-event-structure-and-tractability)
+  - [Dimension-specific planning guide](#dimension-specific-planning-guide)
+  - [Fixed-budget planning](#fixed-budget-planning)
+  - [Illustrative AWS estimates](#illustrative-aws-estimates)
+  - [Benchmark before scaling](#benchmark-before-scaling)
+  - [Workflow recommendations](#workflow-recommendations)
+- [Opportunities for parallelization](#opportunities-for-parallelization)
+  - [Parallelism levels](#parallelism-levels)
+  - [Embarrassingly parallel trajectory ensembles](#embarrassingly-parallel-trajectory-ensembles)
+  - [Monte Carlo and uncertainty quantification](#monte-carlo-and-uncertainty-quantification)
+  - [Parallel multistart and population optimization](#parallel-multistart-and-population-optimization)
+  - [Multiple shooting and time-domain decomposition](#multiple-shooting-and-time-domain-decomposition)
+  - [GPU opportunities and limitations](#gpu-opportunities-and-limitations)
+  - [AWS Batch and cloud orchestration](#aws-batch-and-cloud-orchestration)
+- [AI/ML and mathematical extensions](#aiml-and-mathematical-extensions)
 - [Test beds](#test-beds)
-  - [First biomedical target](#first-biomedical-target)
-  - [Next biomedical extensions](#next-biomedical-extensions)
-  - [Mechanistic stochastic and Bayesian extensions](#mechanistic-stochastic-and-bayesian-extensions)
-  - [Filippov pseudo-Hopf normal form](#filippov-pseudo-hopf-normal-form)
-- [Other disease applications](#other-disease-applications)
-- [Other computational biology applications](#other-computational-biology-applications)
-  - [Predator--prey, pest management, and adaptive harvesting](#predator--prey-pest-management-and-adaptive-harvesting)
-  - [Crop growth, canopy competition, and precision agriculture](#crop-growth-canopy-competition-and-precision-agriculture)
-  - [Gene regulatory networks, cell-cycle control, and synthetic biology](#gene-regulatory-networks-cell-cycle-control-and-synthetic-biology)
-  - [Microbial communities, bioreactors, and pulsed interventions](#microbial-communities-bioreactors-and-pulsed-interventions)
-  - [Epidemiology, public-health policy, and adaptive intervention](#epidemiology-public-health-policy-and-adaptive-intervention)
+- [Other medical conditions and beyond](#other-medical-conditions-and-beyond)
+  - [Existing hybrid-systems methods and software](#existing-hybrid-systems-methods-and-software)
+  - [Pharmaceutical development and translational medicine](#pharmaceutical-development-and-translational-medicine)
+    - [Some infectious diseases: tuberculosis and HIV](#some-infectious-diseases-tuberculosis-and-hiv)
+    - [Oncology and adaptive cancer therapy](#oncology-and-adaptive-cancer-therapy)
+    - [Immunology, inflammation, and autoimmune disease](#immunology-inflammation-and-autoimmune-disease)
+    - [Other PK/PD and quantitative systems pharmacology applications](#other-pkpd-and-quantitative-systems-pharmacology-applications)
+  - [Clinical operations and treatment delivery](#clinical-operations-and-treatment-delivery)
+    - [Dose scheduling, adherence, and monitoring](#dose-scheduling-adherence-and-monitoring)
+    - [Hospital and critical-care workflows](#hospital-and-critical-care-workflows)
+    - [Digital health and closed-loop care](#digital-health-and-closed-loop-care)
+  - [Biomanufacturing and industrial biotechnology](#biomanufacturing-and-industrial-biotechnology)
+  - [Energy systems and power grids](#energy-systems-and-power-grids)
+  - [Supply chains, logistics, and operations](#supply-chains-logistics-and-operations)
+  - [Ecosystems, agriculture, and environmental management](#ecosystems-agriculture-and-environmental-management)
+  - [Infrastructure, robotics, and engineered systems](#infrastructure-robotics-and-engineered-systems)
+    - [Postural control, locomotion, and sensorimotor behavior](#postural-control-locomotion-and-sensorimotor-behavior)
+  - [Specific labs and authors](#specific-labs-and-authors)
+    - [Jeka and Kiemel: human postural control and locomotion](#jeka-and-kiemel-human-postural-control-and-locomotion)
+    - [Ahrens Lab: whole-brain zebrafish sensorimotor behavior](#ahrens-lab-whole-brain-zebrafish-sensorimotor-behavior)
+    - [Cowan and the LIMBS Laboratory: locomotion, active sensing, system identification, and hybrid mechanics](#cowan-and-the-limbs-laboratory-locomotion-active-sensing-system-identification-and-hybrid-mechanics)
+    - [Fortune: feedback control, locomotor variability, and active sensing in weakly electric fish](#fortune-feedback-control-locomotor-variability-and-active-sensing-in-weakly-electric-fish)
+    - [Hines and the NEURON ecosystem: neural and network simulation with events, discontinuities, and multiscale control](#hines-and-the-neuron-ecosystem-neural-and-network-simulation-with-events-discontinuities-and-multiscale-control)
+- [Domains where `hybrid-ds-julia` would be less helpful](#domains-where-hybrid-ds-julia-would-be-less-helpful)
+  - [Why these settings are difficult](#why-these-settings-are-difficult)
+  - [Some infectious and post-infectious conditions](#some-infectious-and-post-infectious-conditions)
+    - [Long COVID](#long-covid)
+    - [Persistent symptoms following Lyme disease treatment](#persistent-symptoms-following-lyme-disease-treatment)
+  - [ME/CFS](#mecfs)
+  - [Mental health and complex behavioral care](#mental-health-and-complex-behavioral-care)
+  - [What remains appropriate in difficult settings](#what-remains-appropriate-in-difficult-settings)
 - [Example applications](#example-applications)
-  - [QSP and PK/PD](#qsp-and-pkpd)
-  - [Translational pharmacology](#translational-pharmacology)
-  - [SAR progression and mechanism differentiation](#sar-progression-and-mechanism-differentiation)
-  - [Autoimmune and inflammatory disease](#autoimmune-and-inflammatory-disease)
-  - [Crop science and precision agriculture](#crop-science-and-precision-agriculture)
-- [Original crop-science motivation](#original-crop-science-motivation)
-- [Software plan](#software-plan)
-- [Roadmap](#roadmap)
-  - [Stage 1 — Narrow deterministic core](#stage-1--narrow-deterministic-core)
-  - [Stage 2 — Flagship biomedical workflow](#stage-2--flagship-biomedical-workflow)
-  - [Stage 3 — QSP-facing workflows](#stage-3--qsp-facing-workflows)
-  - [Stage 4 — Mechanistic stochastic and Bayesian extensions](#stage-4--mechanistic-stochastic-and-bayesian-extensions)
-  - [Stage 5 — Filippov and benchmark suite](#stage-5--filippov-and-benchmark-suite)
-  - [Stage 6 — Refinement and specialization](#stage-6--refinement-and-specialization)
-  - [Stage 7 — Interoperability and import/export bridges](#stage-7--interoperability-and-importexport-bridges)
-- [Licensing and IP posture](#licensing-and-ip-posture)
+- [Crop motivation and software plan](#crop-motivation-and-software-plan)
+- [Roadmap and licensing](#roadmap-and-licensing)
 - [Further reading](#further-reading)
-  - [Related hybrid-systems papers in other domains](#related-hybrid-systems-papers-in-other-domains)
-  - [Core dynamical systems / hybrid methods](#core-dynamical-systems--hybrid-methods)
-  - [QSP / PK–PD concepts and practice](#qsp--pkpd-concepts-and-practice)
-  - [Sensitivity, adjoint, and automatic differentiation](#sensitivity-adjoint-and-automatic-differentiation)
-  - [Mechanistic stochastic and Bayesian methods](#mechanistic-stochastic-and-bayesian-methods)
-  - [Mechanistic--neural hybrid systems](#mechanistic--neural-hybrid-systems)
-  - [Physics-informed neural networks](#physics-informed-neural-networks)
-  - [Neural hybrid automata](#neural-hybrid-automata)
-  - [Neural jump SDEs](#neural-jump-sdes)
-  - [Epidemiology, adaptive intervention, and public-health policy](#epidemiology-adaptive-intervention-and-public-health-policy)
-  - [Mechanistic crop models and trait optimization](#mechanistic-crop-models-and-trait-optimization)
+  - [Hybrid-systems foundations, events, and sensitivity analysis](#hybrid-systems-foundations-events-and-sensitivity-analysis)
+  - [Pharmaceutical development and translational medicine](#pharmaceutical-development-and-translational-medicine-1)
+  - [Clinical operations and treatment delivery](#clinical-operations-and-treatment-delivery-1)
+  - [Biomanufacturing and industrial biotechnology](#biomanufacturing-and-industrial-biotechnology-1)
+  - [Energy systems and power grids](#energy-systems-and-power-grids-1)
+  - [Supply chains, logistics, and operations](#supply-chains-logistics-and-operations-1)
+  - [Ecosystems, agriculture, and environmental management](#ecosystems-agriculture-and-environmental-management-1)
+  - [Infrastructure, robotics, and engineered systems](#infrastructure-robotics-and-engineered-systems-1)
+  - [Specific labs and authors](#specific-labs-and-authors-1)
+  - [Domains where mechanistic hybrid modeling is more limited](#domains-where-mechanistic-hybrid-modeling-is-more-limited)
 
-*A Julia package under development for quantitative systems pharmacology (QSP) and PK/PD models that need to handle real treatment logic: dosing pulses, treatment holidays, toxicity holds, threshold-triggered interventions, therapy switches, and other hybrid structure.*
+## Scope, authorship, and verification status
 
-Although QSP and PK/PD are the package’s primary application areas, the same event-aware methods may also be useful in other computational-biology settings where continuous biological dynamics interact with pulses, thresholds, switching rules, or adaptive interventions. Examples include autoimmune and inflammatory disease, infectious disease, metabolic disease, cell and gene therapy, ecological and pest-management models, crop and precision-agriculture systems, gene-regulatory networks, microbial communities, bioreactors, and epidemiological models with adaptive public-health policies; see [Other disease applications](#other-disease-applications), [Other computational biology applications](#other-computational-biology-applications), and [Example applications](#example-applications). The framework may also be combined with AI, machine learning, and neural-network components to estimate uncertain biological interactions, reconstruct latent states, learn constrained model-discrepancy terms, or represent stochastic event-rich dynamics while retaining explicit mechanistic and treatment logic; see [AI-enabled hybrid modeling for translational pharmacology](#ai-enabled-hybrid-modeling-for-translational-pharmacology) and [AI/ML mathematical extensions](#aiml-mathematical-extensions).
+This document was drafted and expanded with assistance from a large language model. The assistant was used to help organize material, generate prose, identify possible literature and software context, and formulate questions and technical explanations. Its use does not constitute independent validation of the scientific, mathematical, clinical, engineering, software, or literature claims made here.
 
-`hybrid-ds-julia` is aimed at **event-aware simulation, sensitivities, and optimization** for mechanistic models whose behavior depends not only on continuous dynamics, but also on when and how clinically meaningful events occur. The main intended application area is **quantitative systems pharmacology (QSP) and PK/PD**, with a **flagship focus on immuno-oncology tumor–immune models** where treatment is inherently schedule- and event-driven.
+Readers should treat the application discussions, software comparisons, computational-scaling guidance, and cited research context as material requiring verification against original literature, authoritative software documentation, and domain-specific expertise before relying on it for research, engineering, clinical, or operational decisions.
 
-One promising application is early-phase immunotherapy dose-finding, where toxicity-driven holds, rechallenge, delayed adverse events, and complex schedules are common. In that setting, the framework can help represent treatment decision rules directly inside mechanistic models so that dose, schedule, efficacy, and toxicity can be studied together.
-
-The goal of this project is not to rebuild low-level solver infrastructure from scratch. Instead, it is to build a practical layer on top of Julia’s scientific-computing ecosystem that helps modelers work more effectively with trajectories that cross many events and decision boundaries, while remaining close to the kinds of schedule- and intervention-facing questions that matter in translational pharmacology.
-
-The near-term goal is a compact deterministic core with one flagship biomedical example, a short sequence of higher-dimensional extensions, and one end-to-end workflow that makes the package’s value immediately visible to QSP and PK/PD users.
-
-## What this package is not
-
-`hybrid-ds-julia` is **not** intended to be a full pharmacometrics or NLME platform, a general hybrid-automata toolbox, or a broad symbolic mathematics system. It aims instead to be a focused, event-aware numerical layer for mechanistic QSP and PK/PD models—something that complements existing differential-equation and pharmacometric ecosystems.
-
-However, interoperability with established pharmacometric and QSP platforms is part of the longer-term vision. In particular, import and export pathways for models and event specifications from tools such as NONMEM, nlmixr2/RxODE, Pumas, and related ecosystems are being considered so that hybrid workflows can be explored without respecifying complex models from scratch.
-
-## Why this matters
-
-Many of the most important pharmacology questions are not only about **how much drug is present**, but also about **when interventions happen**, **when thresholds are crossed**, and **how treatment logic changes over time**.
-
-In QSP and PK/PD, those questions appear whenever modelers need to compare regimens, understand relapse versus sustained control, explore toxicity management strategies, or represent adaptive treatment rules that depend on state, schedule, or biomarker thresholds.
-
-These are mainstream translational questions, but they are often handled numerically using workflows that are sufficient for coarse analyses yet can become fragile when the scientific question depends directly on dose timing, event-triggered interventions, threshold logic, or other regime changes.
-
-`hybrid-ds-julia` is motivated by that gap. The biological questions are already central to QSP and PK/PD practice; what is often missing is a practical, domain-facing numerical layer that treats event structure as a first-class part of the model rather than as an awkward exception.
-
-Key use cases include:
-
-- **Treatment-schedule dependence** — comparing regimens, continuing solutions across timing and dose parameters, and understanding when small changes in regimen logic produce large changes in long-term outcome.
-- **Optimization, fitting, and model comparison** — using event-aware sensitivities and multiple shooting to improve conditioning when models contain impulses, event surfaces, or threshold-triggered changes.
-- **Mechanism differentiation and SAR** — connecting compound- or mechanism-level differences not only to potency and exposure, but also to the qualitative treatment regimes they produce under realistic intervention logic.
-- **Translational decision support** — embedding biomarker thresholds, toxicity triggers, and regimen logic explicitly in the model so outputs speak more directly to robust schedule design and clinically meaningful regime changes.
-
-The longer-term aim is to make hybrid dynamical-systems workflows directly usable for decision-focused pharmacology and QSP work that needs to connect mechanistic models to schedule design, mechanism-of-action differentiation, and early clinical strategy.
-
-## Who is building this
-
-`hybrid-ds-julia` is being developed by **Sean Carver, Ph.D.**, an applied mathematician with doctoral training in dynamical systems at Cornell University, including work with John Guckenheimer on hybrid dynamical-systems models. That background includes variational equations, multiple shooting, continuation methods, and the geometric viewpoint on periodic orbits, bifurcations, and sensitivities that underlies much of modern work in both smooth and hybrid systems.
-
-A preprint of a 2009 paper that Sean Carver published as first author in the journal *Chaos*, with John Guckenheimer and Noah Cowan as coauthors, is available [here](https://limbs.lcsr.jhu.edu/wp-content/papercite-data/pdf/carverlateral2009.pdf). That work, carried out in the laboratory of Noah Cowan, involved hybrid-system computations in which accurate simulation and sensitivity propagation across events were essential. The preprint contains nine figures in total, and the last three figures, on pages 33–35, are especially relevant here because they visualize the deadbeat manifold described in the text. Each pixel in these plots is the result of solving a boundary value problem, and the manifold is built by solving successive boundary value problems along trajectories that traverse event times, with sensitivities propagated through those events rather than approximated by finite differences. Those figures serve as evidence of prior work on accurate simulation and sensitivity analysis for a hybrid dynamical system. Their construction depends on numerically accurate event handling, boundary value continuation across hybrid transitions, and structured sensitivity propagation. In problems of this kind, naive shooting methods paired with finite-difference sensitivities, even in double-precision arithmetic, are often too ill-conditioned to produce convergent Newton iterates or reliable optimization steps. Permission is currently pending to reproduce these figures and their captions directly in this repository. In the meantime, readers who wish to examine them can consult the linked preprint on the LIMBS website maintained by Noah Cowan, which has been cleared for posting and includes the figures, their captions, and the surrounding discussion explaining what is being visualized and how the computations were carried out.
-
-## Motivation
-
-This project grew out of the observation that many advanced dynamical-systems methods—especially variational equations, multiple shooting, and automatic differentiation for event-driven models—are well developed mathematically but are not yet standard parts of QSP- and PK/PD-facing software workflows.
-
-More broadly, methods that feel standard in one mathematical community are often not standard in nearby application domains. That gap appears clearly in immuno-oncology, QSP, and PK/PD, where mechanistic models are increasingly used for model-informed development but where event-aware sensitivities, impulsive updates, and hybrid treatment logic still need stronger workflow support than is commonly available in domain-facing tools.
-
-To reiterate, the core claim of `hybrid-ds-julia` is not that hybrid mathematics is new. It is that many translational modeling questions already have hybrid structure, and that making event-aware sensitivity propagation and trajectory optimization usable in practice could substantially improve how those questions are simulated and analyzed.
-
-## Why QSP and PK/PD first
-
-QSP and PK/PD are the main intended application areas because they already rely heavily on mechanistic differential-equation models and because many of their most important questions are inherently schedule- and intervention-dependent.
-
-Representative examples include:
-
-- **Immuno-oncology QSP models** with pulsed dosing, immune-response events, or combination treatment logic.
-- **Autoimmune and inflammatory disease models** with flare-remission dynamics, tapering, rescue therapy, or biomarker-triggered intervention rules.
-- **Mechanistic PK/PD models** with treatment switching, toxicity holds, dose delays, or state-triggered interventions.
-
-These are exactly the kinds of systems in which the state trajectory may remain continuous while the governing equations, treatment rules, or state updates change at event times.
-
-At the workflow level, most current QSP and PK/PD practice is built around general differential-equation, PBPK, and pharmacometric toolchains. `hybrid-ds-julia` is not meant to replace that ecosystem. Instead, it aims to complement it with a hybrid numerical layer for models where event structure materially affects simulation, sensitivities, optimization, or translational interpretation.
-
-## AI-enabled hybrid modeling for translational pharmacology
-
-`hybrid-ds-julia` is primarily an event-aware numerical layer for mechanistic QSP and PK/PD models. Its longer-term relevance to AI-enabled model-informed drug development lies in combining explicit biological and clinical structure with learned components where data are informative and mechanistic knowledge is incomplete.
-
-Potential directions include mechanistic--neural hybrid models, in which a neural network represents an uncertain biological interaction or model-discrepancy term; physics-informed neural networks for latent-state reconstruction and parameter learning from sparse data; neural hybrid automata for data-driven discovery of candidate modes and transition structure; and neural jump SDEs for stochastic event-rich processes. These methods could support regimen optimization, translational prediction, virtual-patient updating, and decision support while retaining explicit representations of known doses, toxicity thresholds, treatment holds, therapy switches, and other clinically meaningful event logic.
-
-The intended role of `hybrid-ds-julia` is not to replace mechanistic pharmacology with a black-box predictor. Instead, it is to provide the event-aware simulation, sensitivity, and optimization structure needed to connect learned components to mechanistic models in a way that remains interpretable, testable, and relevant to treatment decisions. The mathematical implications, limitations, and possible implementations of these approaches are discussed in [AI/ML mathematical extensions](#aiml-mathematical-extensions).
-
-## Diversity and equity in workflows
-
-These methods naturally extend to questions of diversity and equity because they allow population-level variability and decision rules to be represented explicitly in the dynamics rather than averaged away. By treating event logic, thresholds, and treatment schedules as first-class components of the model, `hybrid-ds-julia` can be used to explore how heterogeneous patient trajectories respond to real-world intervention policies and access constraints.
-
-### Diversity in the population
-
-In a population setting, hybrid, event-aware workflows make it straightforward to embed variation in pharmacokinetics, pharmacodynamics, immune dynamics, and treatment decision rules across virtual patients. Differences in comorbidities, concomitant medications, biomarker baselines, and toxicity susceptibility can be represented as structured heterogeneity in continuous parameters and event thresholds, while variation in adherence, clinic visit patterns, and rescue criteria appear as heterogeneity in the discrete treatment logic. Because the solver and sensitivities are designed to respect regime changes, one can then study how small shifts in regimen design, monitoring frequency, or threshold policies produce large differences in long-term outcomes across a diverse cohort, rather than only at an “average” patient level.
-
-### Equity in healthcare
-
-Equity questions arise whenever access, monitoring, and intervention timing differ across patient groups, even for the same nominal regimen. Within a hybrid QSP or PK/PD model, those differences can be formalized as alternative event structures: delayed or missed doses, sparser biomarker sampling, higher thresholds for toxicity-driven holds, or different rescue rules and treatment switches. By simulating such policy- and access-induced event differences side by side, `hybrid-ds-julia` can help quantify how inequities in care pathways translate into inequities in exposure, disease control, and toxicity risk, and can support schedule and decision-rule designs that are more robust across structurally disadvantaged subgroups. The aim is not only to capture biological heterogeneity, but also to make disparities in treatment delivery visible at the level of mechanistic trajectories and their sensitivities, where they can inform more equitable regimen and monitoring strategies.
-
-## Current direction
-
-The immediate focus is to turn the current mathematical and conceptual foundation into a small but credible research platform by implementing a narrow deterministic core, one flagship biomedical example, and a short sequence of higher-dimensional extensions.
-
-The package will be strongest if its first public milestones are reproducible, technically convincing, and clearly tied to end-to-end event-aware workflows that a QSP or PK/PD modeler can recognize: model specification, simulation across events, sensitivity propagation through jumps and regime changes, and schedule- or parameter-facing analysis.
-
-That near-term scope is intentionally narrow. A focused, working demonstration is more valuable at this stage than broad coverage of every hybrid-system variant.
-
-## Current status
-
-The repository currently functions primarily as a conceptual and methodological foundation for the package.
-
-The next implementation targets are:
-
-- a deterministic hybrid core,
-- a fully worked flagship biomedical example,
-- a short sequence of higher-dimensional biomedical extensions,
-- and accompanying documentation that shows the workflow from model specification through simulation, sensitivities, and schedule- or parameter-facing analysis.
-
-The initial flagship example will be chosen to make the translational value of the package clear early: not only that the model is hybrid in a mathematical sense, but that event-aware numerics improve the ability to compare regimens, analyze treatment logic, and reason about clinically meaningful regime changes.
+The immuno-oncology material supporting the flagship first test bed has received a focused literature review and should be read together with its cited sources. The other application-domain sections, including broader disease, engineering, and author/laboratory discussions, have not yet received the same level of systematic literature verification. They are best understood as structured hypotheses, potential directions, and invitations for expert correction rather than validated claims of applicability.
 
 ## Mathematical approach
 
-The mathematical core of `hybrid-ds-julia` is built around piecewise-smooth dynamical systems with events, jumps, and regime changes. The package is intended for models in which the continuous state evolution matters, but where clinically or biologically meaningful behavior also depends on discrete intervention logic.
+`hybrid-ds-julia` is intended for mechanistic dynamical models in which continuous-time evolution is interrupted or altered by explicit discrete events. The central modeling task is to make both components first-class objects: users specify the continuous right-hand side, the conditions under which events occur, the state or parameter updates caused by those events, and the quantities to be analyzed, calibrated, or optimized.
 
-The main ingredients are:
+The package is motivated by models such as PK/PD and QSP systems with repeated dosing, treatment holds, toxicity thresholds, therapy switches, missed doses, adherence scenarios, and measurement-driven policies. The same mathematical structure applies more broadly to biological, clinical, industrial, ecological, and engineered systems.
 
-- piecewise-smooth flows,
-- event surfaces and threshold crossings,
-- impulsive state updates,
-- variational equations,
-- saltation matrices,
-- multiple shooting,
-- and automatic differentiation that respects hybrid structure.
+### Continuous dynamics, modes, and events
 
-The central practical idea is that event handling should not be treated as a numerical afterthought. If an event changes the state, the governing equations, or the future treatment logic, then the sensitivity of the trajectory must account for that transition explicitly.
-
-### Piecewise-smooth formulation
-
-Consider a state vector
+A hybrid model contains a continuous state:
 
 \[
-x(t) \in \mathbb{R}^n
+x(t)\in\mathbb{R}^{n},
 \]
 
-with parameters
+and a discrete mode:
 
 \[
-\theta \in \mathbb{R}^p.
+q(t)\in\mathcal{Q}.
 \]
 
-Between events, the state evolves according to an ordinary differential equation:
+Within a mode, the continuous state follows an ODE:
 
 \[
-\dot{x} = f_i(x, t, \theta),
+\dot{x}(t)=f_{q(t)}\bigl(x(t),t,\theta,u(t)\bigr),
 \]
 
-where \(i\) denotes the currently active regime or mode.
+where:
 
-For example, a QSP or PK/PD model may have different right-hand sides before treatment, during dosing, during a treatment holiday, after a toxicity hold, or after switching to a rescue therapy. The continuous state can include drug concentrations, tumor burden, immune-cell populations, cytokines, biomarkers, organ-toxicity variables, or latent disease-state variables.
+- \(x(t)\) is the continuous state;
+- \(q(t)\) identifies the active mode;
+- \(\theta\) is a parameter vector;
+- \(u(t)\) represents scheduled inputs, external forcing, observations, or control actions.
 
-A regime change can occur at a scheduled time, such as a planned dose, or when an event function reaches zero:
+The mode can encode, for example:
+
+- Treatment on, held, tapered, or switched;
+- Active versus inactive controller;
+- Pre-contact versus post-contact mechanics;
+- Batch, fed-batch, cleaning, or harvest phase;
+- Normal, fault, islanded, or restoration grid state;
+- Active, passive, exploratory, or recovery behavioral mode.
+
+An event may occur at a known time, such as a scheduled dose or infusion start, or when a guard condition becomes true:
 
 \[
-h(x, t, \theta) = 0.
+g_i(x(t),t,\theta)=0.
+\]
+
+At an event, the model can update its state, parameters, input, or mode:
+
+\[
+x^+=R_i(x^-,t,\theta),
+\]
+
+\[
+\theta^+=P_i(\theta^-,x^-,t),
+\]
+
+\[
+q^+=T_i(q^-,x^-,t).
+\]
+
+The pre-event and post-event states are denoted by \(x^-\) and \(x^+\). A reset need not make the state discontinuous. It can leave \(x\) continuous while changing the governing right-hand side, active parameters, input schedule, or decision policy.
+
+### Scheduled and state-triggered events
+
+Scheduled events occur at known times:
+
+\[
+t=t_1,t_2,\ldots,t_K.
 \]
 
 Examples include:
 
-- a toxicity biomarker crossing a hold threshold,
-- tumor burden crossing a progression threshold,
-- a biomarker triggering dose escalation or de-escalation,
-- a planned dosing time,
-- a treatment-cycle boundary,
-- or a state-dependent switch between treatment rules.
+- Oral doses;
+- Infusion starts and stops;
+- Laboratory draws;
+- Planned treatment changes;
+- Scheduled maintenance;
+- Known stimulation pulses;
+- Planned irrigation or feed changes.
 
-The governing equation after the event may differ from the equation before the event:
+State-triggered events occur when a continuous trajectory reaches a guard surface:
 
 \[
-\dot{x} = f^-(x, t, \theta)
-\quad \longrightarrow \quad
-\dot{x} = f^+(x, t, \theta).
+g_i(x,t,\theta)=0.
 \]
 
-This piecewise-smooth formulation is broad enough to cover scheduled dosing, threshold-triggered treatment logic, state-dependent regimen changes, and many other hybrid structures relevant to translational pharmacology.
+Examples include:
 
-### Jump phenomena and impulsive updates
+- A toxicity biomarker crossing a hold threshold;
+- Tumor burden crossing an adaptive-treatment threshold;
+- Battery charge reaching a dispatch limit;
+- Temperature crossing a thermostat threshold;
+- Foot contact with the ground;
+- A balance variable crossing a stepping threshold;
+- A pathogen or viral-load measurement reaching a treatment-switch criterion.
 
-Some events change only the active vector field, while others directly change the state. A bolus dose, for example, may instantaneously increase a drug concentration; a treatment reset may change a latent state; and a therapy switch may update one or more treatment-control variables.
+State-triggered events require event detection and root localization. Their timing depends on the state, parameters, inputs, and numerical trajectory. This dependence is central to hybrid sensitivity analysis, calibration, and optimization.
 
-Such events can be represented by a jump map:
+### Event maps and hybrid semantics
+
+A useful hybrid model must specify more than an `if` statement. For each event, the model should make clear:
+
+1. **Guard:** What condition triggers the event?
+2. **Direction:** Does the event apply on an upward crossing, downward crossing, or either direction?
+3. **Priority:** What happens if multiple guards are satisfied at the same time?
+4. **Reset:** Which states, parameters, inputs, or modes change?
+5. **Persistence:** Does the new mode remain active until another event occurs?
+6. **Rearming:** Can the same event trigger immediately again?
+7. **Termination:** Does the event end the simulation or merely change its future evolution?
+8. **Observability:** Which event times, state values, and mode changes are logged?
+
+Explicit event semantics are important for scientific reproducibility. A model should not rely on undocumented callback order, hidden mutable global state, or ambiguous treatment of simultaneous events.
+
+### Hybrid trajectories and measurements
+
+The state trajectory may be continuous, piecewise smooth, or discontinuous depending on the reset map. The derivative is commonly discontinuous at event times even when the state itself remains continuous.
+
+A model may be linked to observations through a measurement equation:
 
 \[
-x^+ = R(x^-, t, \theta),
+y_j=h_j(x(t_j),q(t_j),\theta)+\varepsilon_j,
 \]
 
-where \(x^-\) is the state immediately before the event and \(x^+\) is the state immediately after it.
+where \(y_j\) is an observation at time \(t_j\), \(h_j\) maps hidden state and mode to an observable quantity, and \(\varepsilon_j\) represents measurement noise or discrepancy.
 
-A simple bolus-dose example might be written as:
+This distinction matters in scientific applications. A model should separate:
+
+- Directly measured quantities;
+- Latent states inferred from measurements;
+- Parameters estimated from data;
+- Externally imposed events;
+- State-triggered events;
+- Assumptions that are not directly observable.
+
+### Dosing, pulses, and treatment holds
+
+A common PK/PD event is an instantaneous bolus dose. If \(A(t)\) is an amount in a compartment, a dose at time \(t_k\) can be represented as:
 
 \[
-C^+ = C^- + D,
+A(t_k^+)=A(t_k^-)+D_k.
 \]
 
-where \(C\) is a concentration state and \(D\) is the administered dose. More complicated reset maps can depend on the current state, time, treatment history, parameters, or decision rules.
-
-In a QSP setting, impulsive updates may represent:
-
-- bolus or infusion-start dosing events,
-- dose reductions or treatment restarts,
-- therapy switches,
-- biomarker-triggered intervention changes,
-- state resets associated with surgery or cell therapy,
-- or protocol-defined changes in treatment-control states.
-
-Accurate event simulation requires locating the event time and applying the appropriate reset map. But for optimization, inference, continuation, and sensitivity analysis, it is also necessary to propagate how perturbations in parameters or initial conditions affect the timing and effect of that event.
-
-### Variational equations
-
-For a smooth system,
+An infusion can be represented by a mode-dependent forcing term:
 
 \[
-\dot{x} = f(x,t,\theta),
+\dot{A}=\cdots+u_{\mathrm{infusion}}(t),
 \]
 
-the sensitivity of the state with respect to parameters can be represented by
+with discrete events turning the infusion on, changing its rate, or turning it off.
+
+A treatment hold may leave all biological states continuous while changing a treatment-rate parameter or input:
 
 \[
-S(t) = \frac{\partial x(t)}{\partial \theta}.
+u(t)=0
+\quad\text{when}\quad
+z(t)\geq z_{\mathrm{hold}},
 \]
 
-Between events, the parameter sensitivity satisfies the variational equation
+where \(z(t)\) is a toxicity or safety state. Treatment can later resume under a separate rule:
 
 \[
-\dot{S}
-=
-\frac{\partial f}{\partial x} S
+u(t)=u_0
+\quad\text{when}\quad
+z(t)\leq z_{\mathrm{resume}}.
+\]
+
+Using distinct hold and resume thresholds creates hysteresis and can prevent rapid repeated switching near a single threshold.
+
+### Threshold policies and mode-dependent control
+
+Many hybrid models include decision policies. A general state-dependent policy may take the form:
+
+\[
+u(t)=\pi_{q(t)}\bigl(x(t),\hat{x}(t),t,\theta\bigr),
+\]
+
+where \(\hat{x}(t)\) may be an estimated state based on noisy or delayed observations.
+
+Examples include:
+
+- Hold treatment when toxicity exceeds a threshold;
+- Escalate treatment when a biomarker remains above a threshold;
+- Apply a corrective balance step when a stability margin is crossed;
+- Dispatch energy storage when price and state of charge meet a rule;
+- Switch HVAC mode when temperature crosses a hysteresis band;
+- Start a feed phase when substrate concentration reaches a prescribed range.
+
+The policy itself should be specified separately from the physical, biological, or operational plant where possible. This makes it easier to compare competing policies without rewriting the underlying state dynamics.
+
+### Event logging and reproducibility
+
+A hybrid solution should provide more than sampled trajectories. It should record an event log containing, at minimum:
+
+- Event identifier;
+- Event time;
+- Pre-event mode and post-event mode;
+- Guard value or event cause;
+- Pre-event and post-event state values when relevant;
+- Parameter or input changes;
+- Whether the event was scheduled or state triggered;
+- Solver status and any root-finding diagnostics.
+
+For scientific and engineering use, the event log is part of the result. It allows users to verify that a treatment hold occurred when intended, distinguish an imposed dose from a state-triggered policy event, diagnose unexpected repeated events, and compare event sequences across parameter sets.
+
+### Numerical considerations near events
+
+Event-driven ODE simulation is not equivalent to integrating one smooth vector field over the whole horizon. Event handling requires attention to:
+
+- Guard-function scaling;
+- Event direction;
+- Root-finding tolerances;
+- Simultaneous or nearly simultaneous events;
+- Reinitialization after state or parameter jumps;
+- Discontinuous forcing;
+- Rapid repeated events;
+- Grazing trajectories;
+- Event ordering;
+- Mode consistency after reset.
+
+A transversal event crosses its guard surface with nonzero rate:
+
+\[
+\frac{d}{dt}g_i(x(t),t,\theta)\neq 0.
+\]
+
+Such crossings are generally well behaved. A grazing event has approximately zero crossing rate:
+
+\[
+\frac{d}{dt}g_i(x(t),t,\theta)\approx 0.
+\]
+
+Near grazing, small parameter or state changes can create large changes in event time, event count, or event order. This can make gradients poorly conditioned or undefined in the ordinary smooth sense.
+
+### Validation of hybrid models
+
+Validation should address both continuous trajectories and discrete behavior.
+
+For a proposed model, useful checks include:
+
+- Do state units, parameters, and event maps have a consistent interpretation?
+- Are scheduled doses or interventions applied at the intended times?
+- Do guards trigger only in the intended direction?
+- Are threshold policies protected against unintended chattering?
+- Does event order remain stable under small numerical-tolerance changes?
+- Are state resets physically, biologically, or operationally defensible?
+- Are event times and post-event states reproducible?
+- Does the model reproduce held-out trajectories, events, or outcomes?
+- Does an alternative mechanism explain the observations equally well?
+
+Model fit alone is insufficient. A model can reproduce observed trajectories while assigning them to the wrong latent mechanism, especially when hidden states are weakly measured or confounded.
+
+## Computational scaling, event complexity, and practical compute budgets
+
+This section is for users planning a substantial simulation, calibration, sensitivity-analysis, optimization, control, or uncertainty-quantification workflow. It explains how computational requirements depend on state dimension, parameter dimension, event count, event geometry, solver choices, and the repeated-evaluation demands of the intended task.
+
+This README is intentionally modular. Readers who need only a small event-aware simulation can skip much of this section. Readers planning high-dimensional models, gradient-based inference, multiple shooting, event-aware optimization, or cloud-scale parameter studies should use this section to select an appropriate numerical formulation before investing substantial implementation or compute time.
+
+The central point is:
+
+> The difficulty of a hybrid model is not determined by state dimension alone. It depends on the interaction among continuous dynamics, parameter dimension, event frequency, event conditioning, derivative requirements, solver behavior, and the number of repeated simulations required by the intended workflow.
+
+### Model notation and baseline cost
+
+Consider a mode-dependent hybrid ODE:
+
+\[
+\dot{x}(t)=f_{q(t)}\bigl(x(t),t,\theta,u(t)\bigr),
+\]
+
+where:
+
+- \(x(t)\in\mathbb{R}^{n}\) is the continuous state vector;
+- \(n\) is the number of continuous state variables;
+- \(q(t)\) is a discrete mode;
+- \(\theta=(\theta_1,\ldots,\theta_p)\in\mathbb{R}^{p}\) is the parameter vector;
+- \(p\) is the number of scalar parameters whose effects may be analyzed, estimated, or optimized.
+
+Depending on the application, \(\theta\) may include kinetic rates, PK/PD parameters, initial-condition parameters, controller gains, event thresholds, reset-map parameters, dose sizes, or policy parameters.
+
+Let:
+
+- \(m\) be the number of realized events during one simulated trajectory;
+- \(G\) be the number of guard functions evaluated for state-triggered events;
+- \(N\) be the number of accepted time-integration steps;
+- \(r\) be the number of intervals in a multiple-shooting formulation;
+- \(C_f\) be the cost of evaluating the continuous right-hand side \(f_q\);
+- \(C_{\mathrm{root}}\) be the additional cost of locating one state-triggered event;
+- \(C_{\mathrm{reset}}\) be the cost of executing its reset, mode change, and associated bookkeeping.
+
+For a nominal hybrid simulation without derivative propagation, define the first-order bookkeeping cost:
+
+\[
+C_{\mathrm{solve}}
+:=
+N C_f
 +
-\frac{\partial f}{\partial \theta}.
+m\left(C_{\mathrm{root}}+C_{\mathrm{reset}}\right).
 \]
 
-Similarly, the state-transition matrix with respect to initial conditions satisfies
+This is the approximate cost of one **forward solve**. It is not a complete solver-performance model. In particular, it omits or absorbs into the constants:
+
+- Rejected adaptive steps;
+- Dense interpolation;
+- Guard-function evaluation;
+- Explicit Jacobian construction;
+- Sparse factorization or preconditioning;
+- Linear solves for implicit methods;
+- Memory allocation;
+- Compilation time;
+- Disk I/O and checkpointing;
+- Parallelization overhead;
+- Numerical difficulty near discontinuities.
+
+Scheduled events—such as a known dose at a known time—are often cheaper than state-triggered events because their times are supplied directly. A threshold crossing requires detection and localization, and may force solver reinitialization.
+
+### What makes an event difficult?
+
+A state-triggered event is commonly defined by a guard:
 
 \[
-\dot{\Phi}
+g_i(x(t),t,\theta)=0.
+\]
+
+When the event occurs, the model may apply a state reset:
+
+\[
+x^+=R_i(x^-,t,\theta),
+\]
+
+change parameters,
+
+\[
+\theta^+=P_i(\theta^-,x^-,t),
+\]
+
+or change the active mode:
+
+\[
+q^+=T_i(q^-,x^-,t).
+\]
+
+The vector field may therefore switch from:
+
+\[
+\dot{x}=f_{q^-}(x,t,\theta)
+\]
+
+to:
+
+\[
+\dot{x}=f_{q^+}(x,t,\theta).
+\]
+
+A hybrid event has three computational effects:
+
+1. The solver must detect and localize the event time.
+2. The model must execute the reset or mode change.
+3. A derivative-aware method must account for the fact that perturbations can change both the event time and the post-event state.
+
+The third effect is crucial. A parameter change can cause an event to occur earlier or later, causing the system to spend a different amount of time under the pre-event and post-event vector fields. This is why differentiating only the smooth ODE segments is not enough.
+
+#### Transversal events
+
+An event is transversal when:
+
+\[
+\frac{d}{dt}g_i(x(t),t,\theta)\neq 0.
+\]
+
+Such events are usually well behaved for root finding and first-order sensitivity analysis.
+
+#### Grazing events
+
+At a grazing event:
+
+\[
+\frac{d}{dt}g_i(x(t),t,\theta)\approx 0.
+\]
+
+Small changes in state or parameters can then produce large changes in event time, cause an event to appear or disappear, or alter event ordering. Grazing events can therefore create:
+
+- Very small solver steps;
+- Large, unstable, or undefined local sensitivities;
+- Poor gradient-based optimization behavior;
+- Ambiguous event classification;
+- Scientific fragility in threshold-based policy conclusions.
+
+This is not merely a numerical problem. It often means that the underlying intervention, contact, switching, or decision rule is structurally sensitive.
+
+### Jacobians, variational flow, and \(O(n^2)\) state equations
+
+There are two related but distinct \(n\times n\) objects.
+
+The first is the **state Jacobian** of the vector field:
+
+\[
+J_x(t)
 =
-\frac{\partial f}{\partial x}\Phi.
+\frac{\partial f_q}{\partial x}
+\bigl(x(t),t,\theta\bigr)
+\in\mathbb{R}^{n\times n}.
 \]
 
-These equations provide derivatives that are much more informative and numerically stable than repeatedly perturbing parameters with finite differences, particularly in high-dimensional systems or in problems where the trajectory must satisfy a boundary condition, periodicity condition, or optimization constraint.
+If dense, it has \(n^2\) entries. However, it is not automatically an additional set of \(n^2\) ODE states. A numerical method may form it explicitly, approximate it, exploit sparsity, use Jacobian-vector products, generate it by automatic differentiation, or avoid forming it in explicit methods.
 
-However, a hybrid trajectory is not globally smooth. When a trajectory crosses an event surface or undergoes a reset, the sensitivities must be updated to account for the fact that both the event time and the post-event state depend on the perturbation.
-
-That is where saltation matrices and jump-sensitivity maps enter.
-
-### Saltation matrices
-
-Suppose a trajectory crosses an event surface
+The second object is the **state-transition matrix**, or Jacobian of the flow with respect to the initial condition:
 
 \[
-h(x,t,\theta)=0
+\Phi(t,t_0)
+=
+\frac{\partial x(t)}{\partial x(t_0)}
+\in\mathbb{R}^{n\times n}.
 \]
 
-and transitions from vector field \(f^-\) to vector field \(f^+\). In the simplest state-triggered case without an explicit state reset, the perturbation in the state is mapped across the event by a saltation matrix.
+If the full state-transition matrix is propagated, it satisfies:
 
-For an autonomous event surface \(h(x)=0\), the standard saltation matrix is
+\[
+\dot{\Phi}(t)
+=
+J_x(t)\Phi(t,t_0),
+\qquad
+\Phi(t_0,t_0)=I_n.
+\]
+
+This does introduce \(n^2\) additional scalar differential equations. Together with the original state equations, the augmented smooth system has:
+
+\[
+n+n^2
+\]
+
+continuous scalar states.
+
+The full matrix \(\Phi\) is useful when a method needs derivatives of the flow with respect to **all** initial-state directions. Examples include:
+
+- Dense multiple-shooting Jacobian blocks;
+- Stability analysis;
+- Floquet or Poincaré-map calculations;
+- Full local linearization of a trajectory;
+- Some Newton, sequential-quadratic-programming, and second-order methods;
+- Sensitivity of a full terminal state with respect to a full initial state.
+
+For a hybrid event, a first-order perturbation is updated through a saltation matrix or equivalent event derivative:
+
+\[
+\delta x^+
+=
+\Xi\,\delta x^-.
+\]
+
+Consequently,
+
+\[
+\Phi^+
+=
+\Xi\Phi^-.
+\]
+
+For dense matrices, directly multiplying two \(n\times n\) matrices costs:
+
+\[
+O(n^3)
+\]
+
+per event. This is a key distinction: a dense \(O(n^2)\) event update applies to one tangent vector or one adjoint vector, while propagation of the **full** state-transition matrix requires a dense matrix-matrix update.
+
+#### Directional variational equations
+
+Users should not propagate a full state-transition matrix by default.
+
+If only one initial-condition direction is needed, propagate one tangent vector:
+
+\[
+v(t)
+=
+\frac{\partial x(t)}{\partial\alpha}
+\in\mathbb{R}^{n},
+\]
+
+which satisfies:
+
+\[
+\dot{v}=J_xv.
+\]
+
+This requires only \(n\) additional differential equations. At an event:
+
+\[
+v^+=\Xi v^-.
+\]
+
+For dense \(\Xi\), this costs:
+
+\[
+O(n^2)
+\]
+
+per event.
+
+More generally, propagating \(k\) selected tangent directions requires an \(n\times k\) matrix:
+
+\[
+V(t)\in\mathbb{R}^{n\times k},
+\]
+
+with:
+
+\[
+\dot{V}=J_xV.
+\]
+
+The added continuous-state dimension is then:
+
+\[
+nk,
+\]
+
+rather than:
+
+\[
+n^2.
+\]
+
+This is often preferable when only a few perturbation directions, control directions, or shooting-variable directions are needed.
+
+### Forward parameter sensitivities
+
+Parameter sensitivities are distinct from the initial-condition state-transition matrix. Define:
+
+\[
+S_\theta(t)
+=
+\frac{\partial x(t)}{\partial\theta}
+\in\mathbb{R}^{n\times p}.
+\]
+
+On smooth intervals, the forward variational equations are:
+
+\[
+\dot{S}_\theta
+=
+J_xS_\theta
++
+J_\theta,
+\]
+
+where:
+
+\[
+J_\theta
+=
+\frac{\partial f_q}{\partial\theta}
+\in\mathbb{R}^{n\times p}.
+\]
+
+Propagating all forward parameter sensitivities therefore introduces:
+
+\[
+np
+\]
+
+additional scalar differential equations. Together with the original state equations, the augmented system has:
+
+\[
+n+np
+=
+n(1+p)
+\]
+
+continuous scalar states.
+
+If both the full initial-condition transition matrix and all parameter sensitivities are required, then the augmented system contains:
+
+\[
+n+n^2+np
+\]
+
+continuous scalar states.
+
+#### Dense cost
+
+For dense dynamics, evaluation of:
+
+\[
+J_xS_\theta
+\]
+
+costs approximately:
+
+\[
+O(n^2p)
+\]
+
+per variational update. The sensitivity matrix itself requires:
+
+\[
+O(np)
+\]
+
+memory.
+
+A rough dense cost model is:
+
+\[
+C_{\mathrm{forward\ sens}}
+\approx
+O\!\left(
+N(C_f+n^2p)
++
+m(C_{\mathrm{root}}+C_{\mathrm{reset}}+n^2p)
+\right).
+\]
+
+At an event, the parameter sensitivity update has schematic form:
+
+\[
+S_\theta^+
+=
+\Xi S_\theta^-
++
+B_{\theta},
+\]
+
+where \(B_\theta\) contains derivatives associated with explicit parameter dependence in the guard, reset map, or mode transition. It is generally not enough to use only:
+
+\[
+S_\theta^+=\Xi S_\theta^-.
+\]
+
+For a dense \(n\times p\) sensitivity matrix, the leading matrix multiplication cost at each event is approximately:
+
+\[
+O(n^2p).
+\]
+
+#### Sparse and structured models
+
+Dense asymptotic estimates can substantially overstate cost when the model is sparse.
+
+Let \(z\) be the number of nonzero entries of \(J_x\). A sparse product may cost closer to:
+
+\[
+O(zp)
+\]
+
+than:
+
+\[
+O(n^2p).
+\]
+
+Similarly, many hybrid resets are local. A dose may alter one compartment; a treatment hold may change one parameter; a contact event may affect a limited subset of velocity components. If event derivatives are sparse, block structured, or low rank, their updates can be much cheaper than dense worst-case formulas imply.
+
+For a large model, the useful questions are therefore:
+
+- How many state variables are there?
+- How many parameters are differentiated?
+- Is the Jacobian sparse?
+- How many guard functions are active?
+- How many state variables does each reset affect?
+- Is the event update local, sparse, or low rank?
+- Are full matrices required, or only matrix-vector products?
+
+#### When forward sensitivities are useful
+
+Forward sensitivities are commonly attractive when the parameter count is modest:
+
+\[
+p\ll n,
+\]
+
+or more generally when only a small number of parameters need derivatives.
+
+Examples include:
+
+- Dose amount, dose interval, or infusion rate;
+- A few PK/PD rate constants;
+- A toxicity threshold;
+- A handful of controller gains;
+- An event threshold or reset parameter;
+- Local sensitivity analysis of a calibrated model.
+
+Forward methods are also useful during early model development because they can be inspected and compared with carefully selected finite perturbations away from events.
+
+### Saltation-aware hybrid derivatives
+
+At an event, classical smooth variational propagation is incomplete because perturbations change event timing.
+
+For a transition from mode \(I\) to mode \(J\), a saltation matrix has schematic form:
 
 \[
 \Xi
 =
-I
+D_xR
 +
-\frac{(f^+ - f^-)\nabla h^\top}
-{\nabla h^\top f^-}.
+\frac{
+\left(
+f_J
+-
+D_xR\,f_I
+-
+D_tR
+\right)
+D_xg
+}{
+D_tg+D_xg\,f_I
+}.
 \]
 
-Here:
-
-- \(I\) is the identity matrix,
-- \(\nabla h\) is the normal vector to the event surface,
-- \(f^-\) is the vector field immediately before the event,
-- and \(f^+\) is the vector field immediately after the event.
-
-The denominator
+The exact formula depends on event convention, guard, reset map, and time dependence. The denominator:
 
 \[
-\nabla h^\top f^-
+D_tg+D_xg\,f_I
 \]
 
-measures the transverse speed with which the trajectory crosses the event surface. When this quantity is near zero, the event is close to grazing or tangential contact, and sensitivities can become large or ill-conditioned. Such situations are scientifically important because they often correspond to boundaries between qualitatively different treatment outcomes or decision regimes.
+is the instantaneous rate of crossing the event surface.
 
-For reset events of the form
+When that denominator is near zero, the event is near grazing and hybrid sensitivities can become large, ill-conditioned, or undefined in the ordinary differentiable sense.
+
+| Carried derivative object | Shape | Event update | Dense direct cost per event |
+|---|---:|---:|---:|
+| One tangent direction \(v\) | \(n\times 1\) | \(v^+=\Xi v^-\) | \(O(n^2)\) |
+| \(k\) tangent directions \(V\) | \(n\times k\) | \(V^+=\Xi V^-\) | \(O(n^2k)\) |
+| Full state-transition matrix \(\Phi\) | \(n\times n\) | \(\Phi^+=\Xi\Phi^-\) | \(O(n^3)\) |
+| Parameter sensitivity matrix \(S_\theta\) | \(n\times p\) | \(S_\theta^+=\Xi S_\theta^-+B_\theta\) | \(O(n^2p)\) |
+| One adjoint vector \(\lambda\) | \(n\times 1\) | \(\lambda^-=\Xi^\top\lambda^+\) | \(O(n^2)\) |
+
+These are dense worst-case costs. Sparse, local, low-rank, and matrix-free structures can reduce them substantially.
+
+### Automatic differentiation
+
+Automatic differentiation, or AD, is valuable for computing derivatives of smooth right-hand sides, reset maps, objectives, and numerical kernels. It does not automatically guarantee a correct hybrid derivative.
+
+For example, an informal branch:
+
+```julia
+if g(x, t) <= 0
+    apply_reset!()
+end
+```
+
+does not by itself ensure that differentiation accounts for how a change in \(\theta\) shifts the time when the guard becomes zero.
+
+For state-triggered hybrid events, a correct derivative generally needs:
+
+- The smooth derivative before the event;
+- The derivative of the guard;
+- The derivative of event time;
+- The derivative of the reset map;
+- The vector-field change after the event.
+
+AD may still be part of a correct implementation. For example, it can generate \(J_x\), \(J_\theta\), guard derivatives, reset derivatives, and discrete-adjoint calculations. But it should not be described as a replacement for hybrid sensitivity theory.
+
+### Adjoint sensitivities
+
+Suppose the objective is scalar:
 
 \[
-x^+ = R(x^-,t,\theta),
+\mathcal{L}
+=
+\ell_T(x(T),\theta)
++
+\sum_{j=1}^{m}
+\ell_j(x(t_j^-),x(t_j^+),\theta).
 \]
 
-the corresponding sensitivity update includes derivatives of the reset map as well as corrections for event-time dependence. The exact form depends on whether the event is scheduled, state-triggered, parameter-triggered, or time-dependent, but the key principle is unchanged:
+Examples include:
 
-> Sensitivities must be propagated through the event map, not estimated by ignoring the event or perturbing across it blindly.
+- Final tumor burden plus cumulative toxicity;
+- Negative log likelihood of longitudinal data;
+- Tracking error plus energy cost;
+- Total time below a therapeutic threshold;
+- Total process yield minus operating cost;
+- A control objective with penalties for interventions or mode switches.
 
-This is especially important for dosing schedules, toxicity holds, threshold-triggered treatment changes, and other settings where small parameter changes can alter both the state at the event and the time at which the event occurs.
+An adjoint method propagates a vector:
+
+\[
+\lambda(t)\in\mathbb{R}^{n}
+\]
+
+backward through the trajectory.
+
+For a scalar objective, its key advantage is that the active derivative state is \(O(n)\), rather than \(O(np)\). The method does not carry a separate state-sensitivity column for every parameter.
+
+A useful planning relation is:
+
+\[
+C_{\mathrm{adjoint}}
+\approx
+\alpha C_{\mathrm{solve}}
++
+C_{\mathrm{checkpoint}}
++
+mC_{\mathrm{event\ adjoint}},
+\]
+
+where:
+
+- \(C_{\mathrm{solve}}\) is the nominal forward-solve cost defined above;
+- \(\alpha\) is a practical constant capturing backward integration, replay, interpolation, and derivative work;
+- \(C_{\mathrm{checkpoint}}\) is memory, storage, or recomputation cost;
+- \(C_{\mathrm{event\ adjoint}}\) is the cost of reverse propagation across each event.
+
+The constant \(\alpha\) is not generally one. Adjoint methods exchange dependence on parameter count for trajectory storage, checkpointing, replay, and event-adjoint complexity.
+
+#### When adjoints are attractive
+
+Adjoints are usually attractive when:
+
+\[
+p\gg 1,
+\]
+
+and the objective is scalar or low dimensional.
+
+Examples include:
+
+- Large parameter-estimation problems;
+- Gradient-based calibration;
+- Optimal experimental design;
+- Policy optimization;
+- Neural-network or high-dimensional surrogate parameters;
+- Repeated optimization of a scalar cost.
+
+#### Hybrid adjoint requirements
+
+A hybrid adjoint must traverse every event correctly in reverse time. It must account for:
+
+- Event-time dependence;
+- Reset-map derivatives;
+- Mode changes;
+- Objective terms at events;
+- Event ordering;
+- Terminal events;
+- Simultaneous events;
+- Checkpointing around discontinuities;
+- Reproducibility of the nominal event sequence.
+
+Adjoints may not be the best first method when:
+
+- Only a few parameters matter;
+- Events are frequent;
+- The event sequence changes under small perturbations;
+- Grazing or chattering occurs;
+- The model is strongly stiff;
+- The objective is high dimensional;
+- The event semantics are still being developed;
+- Reliable debugging matters more than asymptotic speed.
+
+A practical progression is:
+
+1. Validate the nominal event-driven solve.
+2. Implement and test a small forward or directional sensitivity calculation.
+3. Check selected derivatives against perturbation calculations away from events.
+4. Add explicit hybrid event-derivative handling.
+5. Introduce adjoints only when parameter dimension or repeated evaluations justify their added complexity.
 
 ### Multiple shooting
 
-Single shooting integrates one long trajectory from a starting point and adjusts initial conditions or parameters until a terminal condition is met. For long time horizons, stiff systems, unstable dynamics, repeated events, or periodic-orbit problems, this can become poorly conditioned.
+Single shooting integrates from one initial condition across the full time horizon. It can be effective for short, stable trajectories. It can become poorly conditioned when trajectories are long, unstable, stiff, highly sensitive, or repeatedly reset.
 
-Multiple shooting addresses that problem by dividing the time horizon into shorter segments. Rather than solving for one initial condition, the method introduces intermediate states:
+Multiple shooting divides the time horizon into \(r\) intervals and introduces a state variable at each boundary:
 
 \[
-x_0, x_1, \ldots, x_m,
+z_i\approx x(t_i),
+\qquad
+i=0,\ldots,r-1.
 \]
 
-with each segment integrated over a shorter interval. The solution is then obtained by enforcing continuity constraints between segments:
+Each interval is propagated independently. Continuity conditions enforce:
 
 \[
-x_{k+1}
--
-\Phi_k(x_k,\theta)
+c_i(z_i,z_{i+1},\theta)
+=
+\Phi_i(z_i,\theta)-z_{i+1}
 =
 0,
 \]
 
-where \(\Phi_k\) denotes the flow map over the \(k\)-th interval, including any events that occur within that interval.
+where \(\Phi_i\) is the hybrid flow map over interval \(i\).
 
-For a hybrid system, the segment maps may include:
+#### Problem dimension
 
-- continuous integration under one or more vector fields,
-- scheduled impulses,
-- state-triggered events,
-- jump maps,
-- and saltation-based sensitivity updates.
-
-This segmentation improves numerical conditioning because unstable directions do not have to be carried through one long integration interval before correction. It also makes it easier to isolate difficult events, place shooting nodes near regime transitions, and formulate boundary-value problems involving periodicity, treatment-cycle consistency, or prescribed endpoint conditions.
-
-Representative uses include:
-
-- finding periodic treatment-cycle solutions,
-- computing trajectories that connect clinically meaningful states,
-- continuing solutions as dose or schedule parameters vary,
-- stabilizing long-horizon optimization,
-- and constructing manifolds or separatrices that organize treatment-response regimes.
-
-### Automatic differentiation
-
-Automatic differentiation can provide accurate derivatives of model components without manually deriving every Jacobian entry. In a hybrid model, however, standard differentiation through a solver is not enough if event timing, mode changes, or reset maps are handled implicitly.
-
-The relevant derivatives include:
+The shooting-state decision variables have approximate dimension:
 
 \[
-\frac{\partial f}{\partial x},
-\qquad
-\frac{\partial f}{\partial \theta},
-\qquad
-\frac{\partial R}{\partial x},
-\qquad
-\frac{\partial R}{\partial \theta},
-\qquad
-\frac{\partial h}{\partial x},
-\qquad
-\frac{\partial h}{\partial \theta}.
+rn.
 \]
 
-These quantities can be obtained using automatic differentiation for the smooth pieces of the model, then combined with explicit hybrid sensitivity formulas at events.
+The continuity constraints have approximate dimension:
 
-The intended workflow is therefore:
+\[
+(r-1)n.
+\]
 
-1. Use automatic differentiation to obtain derivatives of the continuous vector fields, event functions, and reset maps.
-2. Integrate the continuous variational equations between events.
-3. Detect scheduled or state-triggered events accurately.
-4. Apply reset maps and saltation-based sensitivity updates at those events.
-5. Assemble the resulting derivatives into shooting, continuation, fitting, or optimization calculations.
+With \(p\) global parameters, the decision-vector dimension is approximately:
 
-This hybrid-aware approach is more structured than finite-difference workflows because it separates the continuous and discrete sources of sensitivity. It also makes diagnostic failures more interpretable: poor conditioning can be traced to unstable continuous dynamics, near-grazing event crossings, discontinuous treatment logic, or insufficiently informative data rather than being hidden inside a noisy finite-difference estimate.
+\[
+rn+p.
+\]
 
-The package will aim to expose this structure directly to users. Rather than asking modelers to derive saltation maps by hand for every use case, `hybrid-ds-julia` should provide reusable event-aware abstractions that can be combined with Julia’s existing differential-equation, sensitivity-analysis, and optimization tools.
+Thus multiple shooting trades:
+
+\[
+\text{a larger constrained optimization problem}
+\]
+
+for:
+
+\[
+\text{better conditioning and local control of trajectory mismatch}.
+\]
+
+#### Dense flow-map derivatives
+
+A dense Newton or SQP method may require:
+
+\[
+A_i
+=
+\frac{\partial\Phi_i}{\partial z_i}
+\in\mathbb{R}^{n\times n}.
+\]
+
+These are segment-level state-transition matrices. Retaining them across all shooting intervals requires approximately:
+
+\[
+O(rn^2)
+\]
+
+storage.
+
+If derivatives with respect to parameters are retained:
+
+\[
+B_i
+=
+\frac{\partial\Phi_i}{\partial\theta}
+\in\mathbb{R}^{n\times p},
+\]
+
+the additional storage is approximately:
+
+\[
+O(rnp).
+\]
+
+For dense models, if a full state-transition matrix is propagated and updated at each event, the naive event-update work can be approximately:
+
+\[
+O(mn^3).
+\]
+
+This is one reason that large-scale multiple-shooting methods often use sparse Jacobian representations, block-sparse continuity constraints, Jacobian-vector products, adjoint-vector products, matrix-free Krylov solvers, condensing, low-rank update structure, carefully selected segment boundaries, or reduced-order models.
+
+#### Why multiple shooting can help
+
+Multiple shooting is useful when:
+
+- Long horizons amplify unstable directions;
+- Small parameter changes create large trajectory changes;
+- The model has multiple time scales;
+- A fit must match measurements at intermediate times;
+- Repeated events make full-horizon single shooting poorly conditioned;
+- The optimizer starts far from a feasible trajectory;
+- Different portions of the trajectory follow different modes.
+
+For hybrid models, useful segment boundaries may occur at:
+
+- Scheduled doses or interventions;
+- Data collection times;
+- Known controller mode changes;
+- Expected gait or contact phases;
+- Known process phase changes;
+- Before and after particularly sensitive threshold regions.
+
+Unknown state-triggered events may remain inside a shooting interval. Treating their times as explicit decision variables is possible, but adds event-consistency and transversality constraints.
+
+### Event count, event structure, and tractability
+
+The number of events \(m\) matters, but event conditioning and structure matter just as much.
+
+#### Well-separated transversal events
+
+If events are well separated and transversal, each event adds a bounded root-localization and reset cost. With a local or sparse reset, actual cost may be modest.
+
+#### Grazing and event-sequence changes
+
+If a parameter perturbation changes:
+
+\[
+A\rightarrow B\rightarrow C
+\]
+
+into:
+
+\[
+A\rightarrow C,
+\]
+
+then the trajectory can be differentiable within a fixed event sequence but nonsmooth across the boundary between sequences.
+
+A gradient computed under the nominal event sequence may still be locally useful, but it should not be treated as globally reliable. Implementations should log and diagnose:
+
+- Near-grazing crossings;
+- Nearly simultaneous events;
+- Changes in event count;
+- Changes in event order;
+- Repeated immediate events;
+- Excessive root-finding iterations;
+- Solver step collapse near a guard.
+
+#### Chattering
+
+Chattering occurs when a system repeatedly switches near the same event surface. Possible remedies, when physically justified, include:
+
+- Hysteresis bands;
+- Minimum dwell time;
+- Refractory periods;
+- Compliant or relaxation dynamics;
+- Event aggregation;
+- Smooth approximations for purely numerical switches;
+- Differential-inclusion or complementarity formulations.
+
+A model should not silently suppress chattering without recording that choice. The correct response depends on the domain mechanism.
+
+### Dimension-specific planning guide
+
+| Model regime | Reasonable first approach | Main scaling risk | Practical response |
+|---|---|---|---|
+| \(n\lesssim 50\), \(p\lesssim 20\), modest \(m\) | Direct simulation and directional/forward derivatives | Event correctness | Log events; validate selected derivatives |
+| \(n\sim10^2\)–\(10^3\), \(p\ll n\), sparse dynamics | Sparse forward sensitivities | Jacobian products | Preserve sparsity; use matrix-free products where possible |
+| \(n\sim10^2\)–\(10^4\), large \(p\), scalar objective | Event-aware adjoint | Checkpointing and event gradients | Validate on reduced benchmark cases |
+| Long, unstable, or event-sensitive horizon | Multiple shooting | \(rn\) variables and block Jacobians | Segment at meaningful interventions or data times |
+| Full stability or flow-map analysis | Full \(\Phi\) only if necessary | \(n^2\) states and \(O(n^3)\) dense event updates | Use directional products or reduced-order analysis if possible |
+| Dense \(n\gtrsim10^3\), large \(p\) | Model reduction or specialized tools | Dense linear algebra | Exploit low rank, sparsity, locality, or surrogates |
+| Frequent grazing/chattering | Nonsmooth or regularized formulation | Derivatives may fail | Reformulate events; use hysteresis or alternative methods |
+| Primarily discrete operational problem | Discrete-event simulation or optimization | ODE machinery may add little | Use hybrid ODE methods only if a continuous state is central |
+
+### Fixed-budget planning
+
+A practical workflow consumes many more evaluations than one nominal simulation.
+
+Let:
+
+\[
+K
+\]
+
+be the number of objective-and-gradient evaluations required by an optimizer, sampler, calibration procedure, uncertainty study, or experimental-design loop.
+
+Then:
+
+\[
+C_{\mathrm{total}}
+=
+K C_{\mathrm{eval+grad}}.
+\]
+
+For a fixed computational budget \(B\):
+
+\[
+K C_{\mathrm{eval+grad}}
+\leq B.
+\]
+
+A local optimization may require tens to hundreds of evaluations. Multistart optimization may require thousands. Bayesian calibration, posterior sampling, global search, or broad uncertainty quantification may require tens of thousands to millions.
+
+If one objective-and-gradient evaluation costs 10 seconds, then:
+
+\[
+100{,}000
+\times
+10\ \mathrm{seconds}
+=
+1{,}000{,}000\ \mathrm{seconds},
+\]
+
+which is approximately:
+
+\[
+278\ \mathrm{single-worker\ hours}.
+\]
+
+Parallelization can reduce wall-clock time, but it does not reduce total compute consumption.
+
+#### State dimension versus events under a fixed budget
+
+Users commonly face tradeoffs among:
+
+- More state variables;
+- More parameters;
+- More accurate event localization;
+- More explicitly resolved events;
+- Tighter solver tolerances;
+- More optimization starts;
+- More uncertainty samples;
+- More sophisticated measurement models;
+- More expensive derivatives;
+- More detailed data assimilation.
+
+Increasing \(n\) can increase ODE, Jacobian, linear-solver, and memory cost. Increasing \(p\) can dominate forward-sensitivity cost. Increasing \(m\) can increase root finding, resets, solver restarts, and derivative updates. Increasing \(K\) can dominate all per-solve costs.
+
+A disciplined sequence is:
+
+1. Start with the smallest state model that represents the mechanism of interest.
+2. Include only events that meaningfully alter state, dynamics, parameters, or policy.
+3. Validate nominal trajectories and event order.
+4. Add a small, interpretable parameter set.
+5. Benchmark representative objective-and-gradient evaluations.
+6. Estimate the required number \(K\) of evaluations.
+7. Then select cloud hardware and a compute budget.
+
+### Illustrative AWS estimates
+
+Cloud cost should be estimated from measured wall time on representative workloads, not from asymptotics alone.
+
+For any EC2 instance with hourly price \(P_{\mathrm{hr}}\), the raw cost of a single objective-plus-gradient evaluation of duration \(t_{\mathrm{eval}}\) seconds is:
+
+\[
+\mathrm{cost/evaluation}
+=
+\frac{t_{\mathrm{eval}}}{3600}
+P_{\mathrm{hr}}.
+\]
+
+AWS bills eligible EC2 usage in one-second increments with a 60-second minimum; actual cost depends on the selected region, operating system, instance family, storage, transfer, and purchase model. Use the AWS Pricing Calculator and current regional instance prices before committing to a large run.
+
+For illustration only, if an instance costs:
+
+\[
+P_{\mathrm{hr}}=\$0.10/\mathrm{hour},
+\]
+
+then:
+
+| Objective + gradient wall time | Raw compute cost |
+|---:|---:|
+| 1 second | $0.000028 |
+| 10 seconds | $0.000278 |
+| 1 minute | $0.00167 |
+| 10 minutes | $0.0167 |
+| 1 hour | $0.10 |
+
+At this illustrative rate:
+
+| Budget | Raw instance-hours | 10-second evaluations | 1-minute evaluations | 10-minute evaluations |
+|---:|---:|---:|---:|---:|
+| $10 | 100 | 36,000 | 6,000 | 600 |
+| $100 | 1,000 | 360,000 | 60,000 | 6,000 |
+| $1,000 | 10,000 | 3.6 million | 600,000 | 60,000 |
+
+These are arithmetic upper bounds, not performance guarantees. Real throughput can be lower because of Julia compilation and warm-up, failed integrations, event pathologies, checkpointing, disk I/O, data movement, peak-memory limits, queueing, optimizer overhead, imperfect parallel efficiency, and separately launched short-lived jobs.
+
+For many short tasks, keep workers alive and batch evaluations rather than launching a new instance for every simulation.
+
+### Benchmark before scaling
+
+Before purchasing substantial cloud compute, benchmark a representative objective-and-gradient evaluation with:
+
+- The intended state dimension \(n\);
+- The intended parameter dimension \(p\);
+- The intended number of guard functions \(G\);
+- Representative realized event counts \(m\);
+- The intended solver and tolerances;
+- The intended stiff/nonstiff treatment;
+- Dense, sparse, or matrix-free derivatives;
+- The intended forward, adjoint, or multiple-shooting method;
+- Realistic data, objective, and output handling.
+
+Record:
+
+- Mean, median, and worst-case wall time;
+- Accepted and rejected solver steps;
+- Event counts and root-finding iterations;
+- Peak memory;
+- Event ordering and near-grazing diagnostics;
+- Gradient-validation error on test cases;
+- Failure rate;
+- Parallel scaling efficiency;
+- Expected number \(K\) of evaluations.
+
+A nominal simulation that runs quickly can still lead to an impractical workflow if event-aware gradients are slow, optimization requires many restarts, or event sequences are unstable across candidate parameter values.
+
+### Workflow recommendations
+
+#### Exploratory simulation
+
+For exploratory work:
+
+- Prefer low-dimensional, interpretable states;
+- Use scheduled events where timing is known;
+- Log event times, guards, reset maps, and active modes;
+- Plot guards near crossings;
+- Perturb parameters slightly to inspect event-order stability;
+- Validate event semantics before adding optimization.
+
+#### Local sensitivity analysis
+
+For local sensitivity analysis:
+
+- Begin with a small parameter vector;
+- Use directional or forward sensitivities when feasible;
+- Compare selected derivatives with perturbation calculations away from guards;
+- Record whether perturbations alter event time, count, or ordering;
+- Treat grazing and sequence changes as model warnings rather than numerical noise.
+
+#### Parameter estimation and optimization
+
+For estimation and optimization:
+
+- Use constrained low-dimensional parameterizations first;
+- Use multiple shooting when long-horizon single shooting is poorly conditioned;
+- Validate hybrid derivatives before trusting optimizer convergence;
+- Record event sequences at candidate solutions;
+- Penalize physically implausible parameter values and pathological switching;
+- Use multistart, profile, or alternative-method checks where local minima are plausible.
+
+#### Uncertainty quantification
+
+For uncertainty quantification:
+
+- Recognize that the number of evaluations may dominate cost;
+- Parallelize independent trajectories where possible;
+- Use sensitivity screening, surrogates, or reduced-order models where justified;
+- Track uncertainty in event occurrence and event order, not only uncertainty in continuous parameters;
+- Report failure modes and unidentifiable regions explicitly.
+
+#### Policy optimization and control
+
+For policy and control problems:
+
+- Specify what information the policy sees and when;
+- Distinguish scheduled from state-triggered actions;
+- Include safety, intervention-frequency, and switching costs;
+- Test robustness to measurement error, delay, missing data, and parameter uncertainty;
+- Validate policies under held-out scenarios and alternative mechanistic assumptions.
+
+### Scope and limitations
+
+`hybrid-ds-julia` is intended to support transparent hybrid ODE models, explicit events, and progressively more sophisticated analysis. It should not imply that every event-rich model admits a stable, meaningful, inexpensive, or globally differentiable gradient.
+
+Extra care is required for:
+
+- Grazing events;
+- Chattering or Zeno-like switching;
+- Simultaneous events with ambiguous ordering;
+- Discontinuous objectives;
+- Event-sequence changes under small perturbations;
+- Strong stiffness with frequent events;
+- High-dimensional dense state models;
+- Long-horizon unstable trajectories;
+- Poorly measured or weakly identifiable parameters;
+- Safety-critical or clinically consequential decision rules.
+
+In these settings, model reduction, sparse or matrix-free methods, hysteresis, regularization, multiple shooting, derivative-free optimization, nonsmooth methods, robust control, or specialized domain software may be more appropriate than a straightforward gradient-based hybrid ODE workflow.
+
+The relevant question is not only whether a model can be simulated once. It is whether its event logic, derivatives, numerical behavior, calibration assumptions, uncertainty, and computational requirements are understood well enough for the intended scientific, engineering, or decision-support use.
+
+## Opportunities for parallelization
+
+Hybrid models often contain substantial parallelism, but the most useful strategy depends on the level at which work is independent. In most applications, the highest-value and lowest-risk parallelism is **across complete trajectories**: different parameter vectors, initial conditions, subjects, experimental scenarios, Monte Carlo draws, optimization starts, or candidate policies can be simulated independently.
+
+This distinction matters because one hybrid trajectory usually has a sequential causal structure. A state-triggered event must be detected before its reset is applied, and the post-event state determines all later continuous evolution and future events. Therefore, a single event-rich trajectory rarely parallelizes as easily as a large collection of independent trajectories.
+
+The recommended order of implementation is:
+
+1. Parallelize independent simulations first.
+2. Parallelize objective components, data partitions, or shooting intervals where mathematically valid.
+3. Exploit sparse linear algebra and threaded linear solvers inside individual large simulations.
+4. Consider GPUs only when the problem has sufficiently many uniform, compatible trajectories or large data-parallel kernels.
+5. Use multi-node parallelism only after measuring single-node performance and identifying a genuine scaling bottleneck.
+
+### Parallelism levels
+
+| Level | Parallel work unit | Typical use | Main limitation |
+|---|---|---|---|
+| Across trajectories | One complete simulation | Ensembles, parameter sweeps, Monte Carlo, multistart optimization | Usually the best first target |
+| Across objective terms | Independent subjects, experiments, or data blocks | Population calibration, cross-validation, likelihood evaluation | Shared parameters require reduction of results |
+| Across shooting intervals | Segment integrations | Multiple shooting, long horizons | Continuity constraints couple segments |
+| Within one solve | Linear algebra, Jacobian products, large RHS evaluations | Large sparse or PDE-discretized models | Event handling remains sequential |
+| Across derivative directions | Tangent directions or selected columns | Small batches of directional sensitivities | Memory grows with directions |
+| Across optimizer candidates | Population methods, multistart, Bayesian sampling | Global search and robustness studies | Uneven event-rich trajectories cause load imbalance |
+| On GPUs | Many compatible trajectories or kernels | Monte Carlo, parameter sweeps, batched small ODEs | Dynamic callbacks and divergent event paths can reduce efficiency |
+
+### Embarrassingly parallel trajectory ensembles
+
+The simplest and often most effective strategy is to run complete hybrid trajectories independently.
+
+Examples include:
+
+- Different parameter vectors in a parameter sweep;
+- Different initial conditions;
+- Different dose schedules or treatment policies;
+- Different adherence realizations;
+- Different patients or virtual subjects;
+- Different perturbation protocols;
+- Different weather, demand, or disturbance realizations;
+- Monte Carlo samples;
+- Bootstrap replicates;
+- Multistart optimization candidates;
+- Cross-validation folds;
+- Posterior samples or likelihood evaluations;
+- Candidate experimental designs.
+
+If trajectory \(k\) solves:
+
+\[
+\dot{x}_k=f_{q_k}(x_k,t,\theta_k),
+\]
+
+with its own event sequence, initial condition, parameter vector, or random seed, then it can normally run independently of all other trajectories.
+
+If one trajectory has cost \(C_{\mathrm{solve}}\), and there are \(L\) independent trajectories, the total serial work is approximately:
+
+\[
+L C_{\mathrm{solve}}.
+\]
+
+With \(W\) effective workers, the ideal wall time is:
+
+\[
+T_{\mathrm{ideal}}
+\approx
+\frac{L C_{\mathrm{solve}}}{W}.
+\]
+
+Actual speedup is lower because of worker startup and compilation, unequal trajectory runtimes, different event counts, failed trajectories, memory contention, data transfer, result aggregation, and serial portions of optimization or orchestration.
+
+A useful practical model is:
+
+\[
+T_{\mathrm{wall}}
+\approx
+\frac{L\overline{C}_{\mathrm{solve}}}{W}
++
+T_{\mathrm{overhead}}
++
+T_{\mathrm{imbalance}},
+\]
+
+where \(T_{\mathrm{imbalance}}\) reflects the fact that event-rich or stiff trajectories may take much longer than typical trajectories.
+
+### Parallel parameter sweeps and scenario analysis
+
+Parameter sweeps are particularly natural for hybrid models. A user may evaluate:
+
+\[
+\theta^{(1)},\theta^{(2)},\ldots,\theta^{(L)},
+\]
+
+or different schedules:
+
+\[
+u^{(1)}(t),u^{(2)}(t),\ldots,u^{(L)}(t).
+\]
+
+Each simulation can include its own event times, guard crossings, and reset sequence.
+
+A treatment-model ensemble may vary initial disease burden, patient-specific PK parameters, adherence patterns, dose intervals, toxicity thresholds, resistance parameters, monitoring schedules, and treatment-switch rules. A locomotion ensemble may vary initial posture, sensory delay, feedback gains, ground-contact parameters, perturbation magnitude, stepping threshold, controller mode, and noise realization.
+
+A parameter sweep is often more informative than optimizing one nominal model because it exposes regions where event count, event order, stability, or feasibility changes.
+
+### Monte Carlo and uncertainty quantification
+
+Monte Carlo simulations are generally trajectory-parallel.
+
+Suppose uncertain parameters or disturbances are sampled as:
+
+\[
+\theta^{(k)}\sim\pi(\theta),
+\qquad
+k=1,\ldots,L.
+\]
+
+For each sample, a hybrid trajectory produces an output:
+
+\[
+y^{(k)}
+=
+\mathcal{H}\bigl(x^{(k)},q^{(k)},\theta^{(k)}\bigr).
+\]
+
+The resulting ensemble can estimate quantities such as:
+
+\[
+\mathbb{E}[y],
+\qquad
+\mathrm{Var}(y),
+\qquad
+\Pr(y\in\mathcal{A}),
+\]
+
+or the probability that a threshold, treatment hold, failure event, or unsafe state occurs.
+
+Hybrid uncertainty quantification should report discrete uncertainty as well as continuous uncertainty. Useful outputs include:
+
+- Probability that a treatment hold occurs;
+- Distribution of event times;
+- Probability of a specific event sequence;
+- Probability of a controller mode switch;
+- Probability of treatment failure;
+- Distribution of event count;
+- Probability that a trajectory enters a chattering regime.
+
+For large ensembles, workers should use dynamic scheduling rather than equal-sized static blocks when trajectory costs are highly variable.
+
+### Parallel multistart and population optimization
+
+Many hybrid optimization problems are nonconvex because of nonlinear dynamics, multiple modes, threshold decisions, event-sequence changes, discontinuous feasibility boundaries, parameter nonidentifiability, or multiple stable attractors.
+
+A robust workflow often uses multiple starting points:
+
+\[
+\theta_0^{(1)},\ldots,\theta_0^{(L)}.
+\]
+
+Each local optimization can run independently until its results are collected and compared.
+
+This is an attractive use of distributed compute because the principal coupling occurs only at the beginning and end of each optimization run.
+
+Examples include:
+
+- Multistart parameter estimation;
+- Comparing treatment-policy parameterizations;
+- Searching controller-gain spaces;
+- Optimizing alternative experimental protocols;
+- Population-based evolutionary algorithms;
+- Particle-swarm or CMA-ES style methods;
+- Bayesian optimization with batch candidate evaluation;
+- Independent MCMC chains.
+
+For a population-based optimizer with \(L\) candidates per generation, the evaluation stage is often parallel:
+
+\[
+\mathcal{L}\bigl(\theta^{(1)}\bigr),
+\ldots,
+\mathcal{L}\bigl(\theta^{(L)}\bigr).
+\]
+
+The update from one generation to the next is usually synchronized, so the speedup depends on the slowest candidate evaluation in each generation.
+
+### Parallel likelihoods, subjects, and experiments
+
+Many inference objectives decompose across independent data units.
+
+Suppose a shared parameter vector \(\theta\) is fitted to data from \(S\) subjects, experiments, sites, or trials:
+
+\[
+\mathcal{L}(\theta)
+=
+\sum_{s=1}^{S}
+\mathcal{L}_s(\theta).
+\]
+
+If each subject or experiment has a conditionally independent trajectory:
+
+\[
+\dot{x}_s=f_{q_s}(x_s,t,\theta,\eta_s),
+\]
+
+then objective and gradient contributions can be computed independently:
+
+\[
+\mathcal{L}_s(\theta),
+\qquad
+\nabla_\theta\mathcal{L}_s(\theta).
+\]
+
+They are then reduced:
+
+\[
+\mathcal{L}(\theta)
+=
+\sum_{s=1}^{S}\mathcal{L}_s(\theta),
+\]
+
+\[
+\nabla_\theta\mathcal{L}(\theta)
+=
+\sum_{s=1}^{S}\nabla_\theta\mathcal{L}_s(\theta).
+\]
+
+This is appropriate for population PK/PD analyses, multiple virtual patients, treatment arms, replicated animal experiments, movement trials, environmental sites, production batches, or building units.
+
+Care is required if the model contains shared latent variables, global resource constraints, coupling among subjects, or a hierarchical statistical model that requires joint inference. In that case, simulation may still be parallel, but the inference or likelihood-reduction step may be more complicated.
+
+### Multiple shooting and time-domain decomposition
+
+Multiple shooting introduces a natural but limited form of time-domain parallelism.
+
+Let the interval:
+
+\[
+[t_0,T]
+\]
+
+be divided into \(r\) shooting segments:
+
+\[
+[t_0,t_1],
+[t_1,t_2],
+\ldots,
+[t_{r-1},T].
+\]
+
+Given tentative shooting-node states:
+
+\[
+z_0,z_1,\ldots,z_{r-1},
+\]
+
+the segment flows:
+
+\[
+\Phi_i(z_i,\theta)
+\]
+
+can be integrated independently.
+
+The continuity residuals:
+
+\[
+c_i
+=
+\Phi_i(z_i,\theta)-z_{i+1}
+\]
+
+are then assembled.
+
+This yields a parallel pattern:
+
+1. Distribute segment integrations.
+2. Compute local trajectory outputs and local derivative information.
+3. Assemble continuity constraints and objective contributions.
+4. Solve the coupled optimization or linearized correction problem.
+5. Update shooting nodes and repeat.
+
+The continuous segment solves parallelize, but the nonlinear-programming or linear-system solve that reconciles all continuity constraints remains coupled.
+
+Multiple shooting can reduce wall time for large problems only if each segment is computationally substantial, communication and assembly overhead are modest, the optimizer exploits block sparsity, and event handling within each segment remains stable. It is not automatically beneficial for short inexpensive trajectories.
+
+### Parallel directional derivatives
+
+A full forward sensitivity matrix has shape:
+
+\[
+S_\theta
+=
+\frac{\partial x}{\partial\theta}
+\in\mathbb{R}^{n\times p}.
+\]
+
+The \(p\) columns correspond to parameter directions. In principle, subsets of those columns can be propagated in parallel.
+
+If the parameter set is divided into \(B\) blocks:
+
+\[
+\theta=
+\left(
+\theta^{[1]},
+\theta^{[2]},
+\ldots,
+\theta^{[B]}
+\right),
+\]
+
+then sensitivity blocks can be computed separately:
+
+\[
+S_\theta
+=
+\left[
+S^{[1]}
+\;
+S^{[2]}
+\;
+\cdots
+\;
+S^{[B]}
+\right].
+\]
+
+This can be useful when the state dimension is moderate, the parameter count is larger than one worker can handle efficiently, the event sequence is fixed and reproducible, and memory is sufficient.
+
+However, this is often not the first parallelization target. Trajectory-level parallelism is usually simpler and has lower communication requirements.
+
+A full state-transition matrix:
+
+\[
+\Phi(t,t_0)\in\mathbb{R}^{n\times n}
+\]
+
+can likewise be computed by propagating blocks of tangent directions. But if a dense full \(\Phi\) is required, the total amount of arithmetic remains large:
+
+\[
+O(n^3)
+\]
+
+for dense matrix-matrix updates at an event. Parallelism reduces wall time only if memory bandwidth, communication, and dense-linear-algebra implementation scale effectively.
+
+### Parallelism inside one large trajectory
+
+A single large hybrid trajectory may benefit from internal parallelism when continuous dynamics are high dimensional.
+
+Possible sources include:
+
+- Threaded right-hand-side evaluation;
+- Sparse Jacobian construction;
+- Parallel Jacobian-vector products;
+- Parallel residual evaluation;
+- Threaded sparse linear solves;
+- Multithreaded dense BLAS/LAPACK operations;
+- Parallel PDE spatial discretizations;
+- GPU kernels for large vectorized state updates;
+- Parallel observation-model evaluation;
+- Parallel objective contributions at measurement times.
+
+This form of parallelism is most promising when \(n\) is large and continuous-state updates have substantial arithmetic intensity.
+
+It is less useful for small ODE systems with frequent scalar event logic. In that setting, synchronization, branching, cache effects, and task overhead can exceed the work performed per step.
+
+Hybrid events constrain within-trajectory parallelism because they establish a temporal dependency:
+
+\[
+x(t^-)
+\rightarrow
+\text{event detection}
+\rightarrow
+x(t^+)
+\rightarrow
+\text{future trajectory}.
+\]
+
+No later segment of the same single-shooting trajectory can be finalized until event state and mode are known.
+
+### Shared-memory threading
+
+Julia supports shared-memory multithreading: multiple tasks may execute simultaneously on CPU threads while sharing one process memory space.
+
+Shared-memory threading is appropriate when model data are naturally shared, trajectory calculations are relatively small, communication overhead should be minimal, or many independent simulations fit on one machine.
+
+Important implementation considerations include:
+
+- Avoid mutation of shared arrays from multiple trajectories;
+- Give each trajectory independent state, cache, random-number generator, and output storage;
+- Avoid global mutable state in callback functions;
+- Do not rely on callback execution order across trajectories;
+- Use reproducible per-trajectory random seeds when stochastic perturbations are present;
+- Check whether the ODE solver, linear solver, and BLAS libraries are already using threads to avoid oversubscription.
+
+Oversubscription occurs when outer trajectory threading and inner linear algebra threading both attempt to use all available cores. Benchmark combinations deliberately.
+
+### Distributed-memory parallelism
+
+Julia also supports distributed computing with multiple processes that have separate memory spaces. These processes can run on one machine or across multiple machines.
+
+Distributed processes are appropriate when individual trajectories are moderately expensive, memory requirements exceed a single process or node, many simulations must run independently, failure isolation is useful, or a cluster or cloud environment is available.
+
+Distributed execution introduces additional requirements:
+
+- Serialize or package model code and dependencies consistently;
+- Move only necessary data to workers;
+- Avoid repeatedly transferring large immutable input data;
+- Aggregate small summaries rather than complete time-series trajectories when possible;
+- Save detailed trajectories to worker-local or object storage only when needed;
+- Record package versions, solver options, random seeds, and hardware metadata;
+- Design jobs to tolerate worker failure and restart.
+
+For cloud runs, independent-trajectory workloads are usually better candidates for distributed parallelism than tightly coupled single-trajectory time-domain decomposition.
+
+### GPU opportunities and limitations
+
+GPUs are most attractive when many trajectories have similar numerical structure and can run in a batched, data-parallel fashion.
+
+Good GPU candidates include:
+
+- Large Monte Carlo ensembles;
+- Parameter sweeps;
+- Large collections of short, similarly structured trajectories;
+- Batched initial-condition studies;
+- GPU-compatible neural ODE or surrogate components;
+- High-dimensional vectorized state updates;
+- Large sparse or dense linear-algebra kernels;
+- Ensemble uncertainty quantification.
+
+Hybrid event logic creates GPU-specific challenges:
+
+- Different trajectories may experience different event counts;
+- Different trajectories may cross different guards;
+- Root-finding iterations may differ;
+- Branching can cause warp divergence;
+- Dynamic allocation and arbitrary callback logic may not compile or perform well on GPU hardware;
+- Event sequences may create irregular memory access;
+- Some solvers, callbacks, AD paths, and linear algebra routines may not be GPU compatible.
+
+Therefore, GPU acceleration should be treated as a later optimization step, not a default assumption.
+
+> GPUs are most promising for large ensembles of similar trajectories with predictable event structure. CPUs are often simpler and more robust for a small number of irregular, stiff, event-rich trajectories.
+
+### Load balancing for event-rich ensembles
+
+Hybrid ensembles often have variable trajectory cost.
+
+One trajectory might have:
+
+\[
+m=0
+\]
+
+events and finish quickly. Another may have:
+
+\[
+m\gg 1,
+\]
+
+many rejected steps, stiffness, a near-grazing threshold, or chattering. Static assignment of the same number of simulations to each worker can leave some workers idle while one worker processes difficult cases.
+
+Use dynamic scheduling when run times vary substantially:
+
+- Queue individual trajectories or small batches;
+- Allow idle workers to request additional work;
+- Use work-stealing or dynamic map scheduling where appropriate;
+- Group simulations with similar expected cost only if that cost can be predicted reliably;
+- Treat solver failures and event pathologies as first-class outcomes to log and reschedule or analyze.
+
+For Monte Carlo work, collecting only summary statistics can improve scaling:
+
+\[
+\left(
+\text{objective},
+\text{event count},
+\text{event times},
+\text{terminal state},
+\text{failure code}
+\right),
+\]
+
+rather than retaining every state value at every solver time point for every realization.
+
+### Reproducibility under parallel execution
+
+Parallel execution can make results harder to reproduce unless the workflow is designed carefully.
+
+For each trajectory, record:
+
+- A deterministic trajectory identifier;
+- Parameter vector;
+- Initial condition;
+- Random seed or random-number-generator state;
+- Solver and tolerance configuration;
+- Event/callback configuration;
+- Package and Julia versions;
+- Hardware and worker information;
+- Event log;
+- Outcome status and failure diagnostics.
+
+A robust strategy is to derive a per-trajectory seed from a master seed and trajectory identifier:
+
+\[
+\mathrm{seed}_k
+=
+h(\mathrm{master\ seed},k),
+\]
+
+where \(h\) is a deterministic hash or seed-generation rule.
+
+Do not rely on the order in which parallel tasks happen to finish. Completion order can vary across machines and runs even when individual numerical calculations are deterministic.
+
+### AWS Batch and cloud orchestration
+
+For large independent trajectory ensembles, AWS Batch array jobs are a natural cloud-execution pattern. An array job creates multiple child jobs from one submission; each child job can use its assigned array index to select a parameter block, replicate, optimization start, or simulation batch.
+
+A practical array-job design is:
+
+1. Build a container with a fixed Julia version, project environment, model code, and scripts.
+2. Store immutable input data and parameter grids in object storage or package them with the job.
+3. Assign each child job a deterministic subset of trajectory indices.
+4. Write per-job summaries, diagnostics, and optional detailed outputs.
+5. Run a final aggregation job after the array completes.
+6. Record the container image digest, git commit, package manifest, and random-seed policy.
+
+Multi-node parallel jobs are possible when one tightly coupled computation must span multiple machines, but they require distributed-communication libraries and more complex orchestration. They are generally not the first choice for independent hybrid trajectories.
+
+### Parallelization strategy by workflow
+
+| Workflow | Best first parallelization target | Usually avoid first |
+|---|---|---|
+| Parameter sweep | Independent parameter vectors | Distributed full state-transition matrices |
+| Monte Carlo uncertainty analysis | Independent random draws | GPU use before checking event divergence |
+| Population PK/PD simulation | Virtual patients or subjects | One tightly coupled multi-node solve |
+| Multistart calibration | Independent starts | Parallelizing every small derivative column |
+| Bayesian sampling | Independent chains or batched proposals | Shared mutable likelihood state |
+| Multiple shooting | Segment solves and subject-level data blocks | Excessive segmentation of cheap trajectories |
+| Large stiff sparse model | Threaded/sparse internal linear algebra | GPU migration without compatibility testing |
+| Policy optimization | Candidate policies and scenarios | Assuming a single trajectory can be time-parallelized |
+| Experimental design | Candidate designs and simulated replicates | Retaining every full trajectory unnecessarily |
+
+### Recommended implementation sequence
+
+A practical staged plan is:
+
+1. **Make one trajectory correct.** Validate continuous dynamics, guard functions, reset maps, event ordering, and diagnostics.
+2. **Make one trajectory reproducible.** Fix solver settings, seeds, data versions, and output schema.
+3. **Benchmark one trajectory.** Measure wall time, memory, accepted/rejected steps, event count, and output size.
+4. **Run a small threaded ensemble.** Test 2, 4, and 8 workers. Confirm numerical reproducibility and absence of shared-state errors.
+5. **Measure speedup and memory.** Compare observed speedup with ideal scaling. Inspect whether event-rich trajectories create load imbalance.
+6. **Move independent work to distributed processes or cloud jobs.** Do this when trajectories are expensive enough to justify process, machine, or container overhead.
+7. **Consider GPU execution only after profiling.** Confirm that callbacks, event structure, solver choice, and model code are compatible and that trajectories are sufficiently uniform.
+8. **Consider multi-node coupled parallelism only for proven bottlenecks.** Use it for large structured problems whose internal linear algebra or multiple-shooting formulation genuinely requires it.
+
+### Scope and limitations
+
+Parallelism reduces wall-clock time when work is independent or can be decomposed with limited communication. It does not remove underlying arithmetic, memory, event-handling, or numerical-conditioning costs.
+
+In hybrid systems, the main limitations are structural:
+
+- Events within one trajectory create temporal dependencies;
+- Grazing and chattering can make some trajectories much more expensive than others;
+- Event-sequence changes can complicate derivative calculations;
+- GPU efficiency can fall when trajectories diverge in branches, event counts, or root-finding paths;
+- Multiple shooting makes segment propagation parallel but retains globally coupled continuity constraints;
+- Distributed computing adds serialization, scheduling, data-transfer, and reproducibility responsibilities.
+
+The best initial use of parallel computing in `hybrid-ds-julia` is therefore likely to be reproducible ensembles of independent trajectories. More tightly coupled parallel methods should be introduced only where benchmarking shows that they solve a meaningful computational bottleneck.
 
 ## AI/ML mathematical extensions
 
@@ -993,361 +2597,715 @@ A complete benchmark workflow could include:
 
 Together, the biomedical and Filippov test beds create a complementary validation strategy. The biomedical models demonstrate translational relevance, while the normal-form benchmark demonstrates that the underlying hybrid numerical machinery behaves correctly in a setting where nonsmooth dynamics can be examined directly.
 
-## Other disease applications
+## Other medical conditions and beyond
 
-Although the initial focus is QSP and PK/PD, the same event-aware numerical framework can apply to a broad range of mechanistic disease models.
+Hybrid dynamical systems are useful when a problem combines continuous evolution with consequential discrete events. The continuous component may represent biological burden, drug concentration, inflammation, physiological state, resource level, equipment condition, inventory quality, temperature, or another evolving state. Events may include dosing, treatment changes, diagnostic results, threshold crossings, failures, maintenance, interventions, policy changes, contact transitions, or environmental shocks.
+
+The examples below are promising not simply because they belong to a particular disease, scientific discipline, or industry. They are promising when the relevant continuous states, event mechanisms, measurements, and decision questions can be defined well enough to support calibration, validation, uncertainty analysis, and—where appropriate—optimization or control.
+
+### Existing hybrid-systems methods and software
+
+Hybrid dynamical systems, switched systems, impulsive differential equations, event-triggered simulation, and threshold-based control are established approaches across engineering, biology, medicine, manufacturing, energy systems, robotics, and operations research. In several domains, mature specialist methods and software already exist. Multibody robotics platforms support mechanically detailed contact and actuator models; power-system packages support load-flow, transient, electromagnetic-transient, and protection studies; neural simulators support detailed biophysical neurons and network events; and domain-specific PK/PD, bioprocess, and operations tools support established workflows.
+
+`hybrid-ds-julia` is not intended to replace those specialized ecosystems. Its intended contribution is a complementary, transparent workflow for researchers who can state a mechanistic model as continuous-time differential equations together with discrete events, thresholds, dosing schedules, treatment holds, switching policies, and reset maps. This interface is especially natural when the model does not require a full rigid-body specification, a network power-flow representation, a detailed compartmental-neuron model, or a domain-specific simulation language.
+
+The goal is therefore not to claim that hybrid modeling is new in the domains below. Rather, it is to provide an accessible Julia-native framework for reduced-order and domain-facing models in which the investigator directly specifies the continuous dynamics, event conditions, reset maps, measurements, and analysis objectives.
+
+### Pharmaceutical development and translational medicine
+
+#### Some infectious diseases: tuberculosis and HIV
+
+Tuberculosis and HIV are strong examples of settings in which continuous biological and pharmacological states interact with clinically consequential discrete treatment events.
+
+For tuberculosis, relevant continuous states can include pathogen burden, drug exposure, host response, lesion- or compartment-specific burden where justified, and emergence of drug resistance. Important discrete events include treatment initiation, individual doses and missed doses, regimen changes, microbiological monitoring, adverse events, treatment interruption, and treatment completion. This structure supports questions about adherence, dose scheduling, pharmacokinetic variability, resistance risk, and monitoring policies.
+
+For HIV, relevant states can include viral load, susceptible and infected cells, immune response, CD4 count, drug concentrations, and—when justified by the model—latent viral reservoirs. Relevant events include antiretroviral-therapy initiation, routine doses, missed doses, long-acting injections, treatment interruption, viral-load monitoring, resistance testing, regimen changes, and treatment of opportunistic infections. Such models can support analysis of viral suppression, rebound risk, adherence patterns, drug exposure, and treatment-switch decisions.
+
+Mechanistic infectious-disease modeling already includes within-host pathogen dynamics, PK/PD, resistance, adherence, and treatment-optimization research. Tuberculosis pharmacometric work links drug exposure to microbiological response and compares candidate dosing regimens; HIV has a mature literature on viral dynamics, antiretroviral exposure, immune response, treatment interruption, and rebound. `hybrid-ds-julia` is complementary when scheduled or state-triggered events—doses, missed doses, long-acting injections, monitoring visits, toxicity holds, resistance thresholds, or regimen switches—must be represented explicitly.
+
+Forward or directional sensitivities can quantify the influence of biological, pharmacological, and adherence parameters. Constrained optimization can compare dosing, monitoring, or switching policies when objectives and safety constraints are explicit. Neither should be interpreted as a clinical recommendation without disease-specific calibration, validation, and appropriate clinical expertise.
+
+These applications are promising when the model is tied to clearly defined quantities and decisions, such as pathogen or viral burden, drug exposure, resistance, adherence, and monitoring. They should not be presented as replacements for clinical diagnosis or as a means of inferring unmeasured individual mechanisms from sparse records.
+
+#### Oncology and adaptive cancer therapy
+
+Cancer treatment naturally combines continuous tumor and host dynamics with discrete clinical decisions. Continuous states may include tumor burden, tumor subclones, immune activity, biomarker levels, drug concentrations, toxicity burden, organ function, and treatment response. Discrete events include chemotherapy, targeted therapy, immunotherapy, radiotherapy, surgery, imaging, biopsy, dose reduction, treatment holiday, progression, and regimen switching.
+
+Potential applications include adaptive treatment scheduling, comparison of dose-intensity and toxicity tradeoffs, resistance-aware therapy, biomarker-triggered treatment changes, and simulation of alternative monitoring schedules. The most credible models are anchored to explicit tumor-growth, PK/PD, toxicity, and measurement assumptions and evaluated against appropriately matched clinical or experimental data.
+
+Mathematical oncology already uses ODE, PDE, stochastic, agent-based, evolutionary, and PK/PD models to study tumor growth, resistance, toxicity, and treatment scheduling. Adaptive-therapy research is particularly relevant because tumor burden is monitored at surveillance times and treatment may start, pause, resume, or change when prespecified thresholds are crossed.
+
+`hybrid-ds-julia` can provide a transparent implementation for continuous tumor, resistant-clone, biomarker, drug-exposure, and toxicity states coupled to discrete surveillance, dosing, treatment-holiday, and regimen-switch events. Hybrid sensitivity analysis can identify which parameters or threshold rules drive predicted control or failure. Constrained optimization can compare policy classes while preserving explicit toxicity, dosing, monitoring, and feasibility constraints.
+
+The package should not imply that a simplified tumor model is sufficient to select treatment for an individual. Its appropriate role is to represent stated biological and policy assumptions, analyze their consequences, compare alternative intervention rules, and identify what measurements would be most useful for distinguishing competing models.
+
+#### Immunology, inflammation, and autoimmune disease
+
+Inflammatory and autoimmune conditions can involve continuous disease activity, cytokine signaling, tissue damage, biomarker trajectories, drug concentrations, and recovery processes, along with discrete events such as flare recognition, induction therapy, maintenance therapy, tapering, treatment escalation, infection, surgery, and laboratory monitoring.
+
+Hybrid models may be useful for studying treatment timing, induction-versus-maintenance strategies, therapeutic monitoring, flare-sensitive dosing policies, and the tradeoff between disease control and adverse effects. They are most appropriate when the intended biological state variables and observable biomarkers have a defensible mechanistic relationship.
+
+Existing mathematical immunology and autoimmune-disease literature includes models of tolerance, immune activation, flare-like behavior, tissue damage, treatment response, and drug combinations across many disease indications. Such models often use continuous immune-cell, cytokine, biomarker, and drug-exposure states, while induction, maintenance, tapering, monitoring, adverse-event holds, and escalation are naturally event-based.
+
+`hybrid-ds-julia` can support explicit treatment policies layered on top of mechanistic models, including sensitivity analysis for uncertain immune or PK/PD parameters and constrained comparison of tapering, escalation, and monitoring rules. Any disease-specific use still requires a defensible biological state model, indication-specific calibration, and careful consideration of parameter identifiability.
+
+#### Other PK/PD and quantitative systems pharmacology applications
+
+More generally, `hybrid-ds-julia` can support PK/PD and quantitative systems pharmacology models in which drug concentrations and biological states evolve continuously while clinical actions occur at discrete times.
 
 Examples include:
 
-- **Autoimmune disease** — flare-remission dynamics, tapering schedules, rescue therapy, and biomarker-triggered escalation or de-escalation.
-- **Inflammatory disease** — treatment holidays, adaptive biologic dosing, threshold-based switching, and toxicity management.
-- **Infectious disease** — pulsed antimicrobial therapy, adherence interruptions, resistance thresholds, treatment switching, and pathogen-load triggers.
-- **Metabolic disease** — intermittent interventions, glucose-triggered dosing rules, meal events, and state-dependent control policies.
-- **Neurological disease** — stimulation protocols, medication cycling, threshold-triggered intervention, and episodic symptom dynamics.
-- **Cell and gene therapy** — conditioning regimens, infusion events, expansion phases, delayed toxicity, and intervention rules based on cytokine or biomarker dynamics.
-- **Cardiovascular disease** — intermittent treatment, device-triggered interventions, threshold-based alarms, and adaptive control of physiological states.
+- Repeated oral, intravenous, infusion, or depot dosing
+- Dose interruptions, missed doses, and adherence scenarios
+- Therapeutic-drug-monitoring policies
+- Drug combinations and interaction effects
+- Biomarker-triggered dose adjustment
+- Toxicity thresholds and treatment holds
+- Resistance or tolerance thresholds
+- Sequential, cyclic, and adaptive treatment regimens
 
-The common feature is not any particular disease area. It is the coexistence of continuous biological dynamics and discrete intervention logic.
+PK/PD and QSP modeling already provide established frameworks for characterizing drug concentration, target engagement, biomarker response, efficacy, toxicity, variability, and treatment response. `hybrid-ds-julia` is most relevant where treatment delivery or decision rules create genuine discontinuities: bolus or infusion doses, missed doses, treatment cycles, dose holds, delayed starts, switching protocols, threshold-triggered monitoring, and sequential therapies.
 
-In all of these settings, the central questions are similar:
+The framework can support local or global sensitivity analysis, parameter estimation, uncertainty propagation, and constrained regimen optimization when event derivatives are handled correctly. It is complementary to—not a replacement for—validated population-PK, nonlinear mixed-effects, regulatory pharmacometrics, and disease-specific QSP workflows.
 
-- How does timing affect long-term outcome?
-- Which thresholds or intervention rules are responsible for a qualitative change in behavior?
-- How robust is a schedule across plausible parameter variation?
-- Can model sensitivities identify leverage points for safer or more effective treatment strategies?
-- Do different treatment policies create distinct dynamical regimes that should be analyzed separately?
+### Clinical operations and treatment delivery
 
-## Other computational biology applications
+#### Dose scheduling, adherence, and monitoring
 
-The same hybrid dynamical-systems methods can also support computational-biology applications outside human disease modeling. In each case, the continuous state dynamics may be governed by differential equations, while interventions, environmental changes, threshold rules, or experimental protocols introduce discrete events and regime transitions.
+Clinical treatment delivery includes event-rich processes that interact with continuous biological response. Medication starts, scheduled doses, missed doses, infusions, refill gaps, laboratory tests, adverse events, and treatment changes may be represented as discrete events. Drug exposure, treatment response, toxicity, and selected biomarkers may evolve continuously.
 
-### Predator--prey, pest management, and adaptive harvesting
+Potential uses include comparing dosing schedules, studying the effects of adherence patterns, evaluating monitoring intervals, simulating escalation rules, and examining how delayed measurements or delayed treatment changes affect outcomes.
 
-Ecological models often include continuous population dynamics together with discrete harvesting, stocking, pesticide application, predator release, seasonal transitions, or threshold-based management decisions.
+Dose scheduling and therapeutic monitoring are intrinsically hybrid: drug and response states evolve continuously, while dosing, missed-dose episodes, refills, laboratory draws, alert generation, clinician review, and treatment adjustment occur at discrete times. Existing pharmacometric and control-oriented approaches study these problems through PK/PD modeling, therapeutic-drug monitoring, feedback control, and optimization.
 
-A simple predator--prey system might be represented as
+`hybrid-ds-julia` can provide explicit event-level simulation of adherence scenarios and monitoring policies, together with sensitivity analysis for pharmacokinetic variability, measurement delay, and threshold choice. Policy optimization should remain constrained by clinically established safety limits and evaluated prospectively before any real-world use.
+
+#### Hospital and critical-care workflows
+
+Hospital and intensive-care settings contain many hybrid processes: patient physiology evolves continuously, while medications, ventilation changes, procedures, laboratory results, transfers, alarms, and care-team decisions occur as discrete events.
+
+Possible applications include simulation of protocolized treatment pathways, monitoring thresholds, resource constraints, escalation or de-escalation decisions, fluid and drug administration schedules, and interactions between operational delays and physiological response. Such work requires careful validation and should not be treated as a substitute for clinical judgment.
+
+Critical-care and hospital modeling already includes physiological simulation, alarm design, queuing, discrete-event simulation, and clinical decision-support research. The hybrid formulation is appropriate when a continuous physiological or pharmacological model is coupled to interventions, laboratory results, procedures, care-team decisions, transfers, and resource constraints.
+
+`hybrid-ds-julia` can support reduced-order protocol simulations and sensitivity studies of timing, threshold, and delay assumptions. Discrete-event and workflow simulators may be preferable when physiology is not central. Optimization or control claims in this setting require unusually careful safety constraints, calibration, prospective evaluation, and clinician oversight.
+
+#### Digital health and closed-loop care
+
+Wearables, home monitoring, remote-care platforms, and clinical decision-support systems increasingly combine continuous streams of measurements with discrete interventions. Continuous signals may include glucose, activity, heart rate, blood pressure, oxygen saturation, temperature, or symptom trends. Events may include alerts, patient-reported outcomes, medication reminders, clinician review, telehealth visits, treatment adjustments, and device failures.
+
+Hybrid models can help prototype monitoring policies, alert thresholds, intervention timing, and robustness to missing or delayed data. Safety-critical decision support requires substantial external validation, human-factors evaluation, and appropriate clinical oversight.
+
+Closed-loop health technologies already combine continuous sensing, control algorithms, alerts, and discrete treatment or communication events. `hybrid-ds-julia` can provide a transparent research environment for exploring threshold policies, delayed or missing measurements, event-triggered intervention, and robustness to sensor noise.
+
+Sensitivity and optimization analyses should report uncertainty, failure modes, alert burden, and safety constraints rather than treating a simulated policy as ready for deployment.
+
+### Biomanufacturing and industrial biotechnology
+
+#### Batch, fed-batch, and continuous bioprocesses
+
+Bioprocesses often combine continuous reactor dynamics with discrete operating actions. Continuous states can include biomass, substrate concentrations, product concentration, dissolved oxygen, pH, temperature, and metabolic activity. Discrete events can include feed changes, sampling, sensor calibration, contamination response, batch transitions, harvest, cleaning, and controller-mode changes.
+
+Potential applications include feed scheduling, yield optimization, process monitoring, disturbance analysis, scale-up studies, and comparison of batch, fed-batch, and continuous-production strategies.
+
+Bioprocess modeling and control already use mass-balance ODEs, soft sensors, process analytical technology, model-predictive control, switching control, and optimization for batch, fed-batch, and continuous manufacturing. Feed changes, sampling, mode changes, harvest, cleaning, contamination response, and equipment faults make many workflows explicitly hybrid.
+
+`hybrid-ds-julia` can complement specialized process-control platforms by enabling compact, transparent ODE-and-event prototypes, hybrid sensitivity analysis, feed-schedule optimization, and investigation of threshold or switching policies. Plant deployment requires validated kinetics, measurement models, operational constraints, and integration with established manufacturing-control systems.
+
+#### Quality control, maintenance, and process transitions
+
+Manufacturing systems evolve under continuous wear, throughput, energy use, inventory levels, and quality metrics, while maintenance, inspection, repair, changeovers, quality holds, and shutdowns occur as discrete events.
+
+Hybrid models can support predictive-maintenance policies, quality-control strategies, scheduling of inspection and calibration, response to process deviations, and evaluation of tradeoffs among yield, downtime, risk, and operating cost.
+
+Existing manufacturing, reliability, and operations research includes condition monitoring, maintenance optimization, discrete-event simulation, and process-control methods. `hybrid-ds-julia` is most relevant where a continuous degradation, quality, thermal, chemical, or inventory state interacts directly with event-driven inspection, maintenance, production, and policy logic.
+
+Sensitivity analysis can identify whether a policy is dominated by degradation rate, sensor noise, maintenance threshold, repair time, demand assumptions, or process variability. Optimization can compare constrained maintenance and production policies when the continuous state model is meaningful and the decision rules are explicit.
+
+### Energy systems and power grids
+
+#### Storage dispatch and demand response
+
+Energy storage and demand-response systems have continuously varying states of charge, load, renewable generation, prices, temperature, and equipment health. Discrete events include dispatch commands, charging or discharging transitions, tariff changes, demand-response activations, maintenance, and equipment failures.
+
+Hybrid models can support storage-control policies, peak-shaving analysis, microgrid operation, tariff-sensitive dispatch, and evaluation of resilience under uncertain demand and generation.
+
+Energy-system research already uses optimal control, stochastic control, mixed-integer optimization, detailed power-system simulation, and model-predictive control. `hybrid-ds-julia` is most useful for transparent reduced-order models in which storage dynamics, thermal limits, degradation, price signals, and discrete dispatch decisions interact.
+
+Sensitivity analysis can identify dependence on demand, generation, degradation, tariff, and threshold assumptions. Constrained optimization can compare dispatch policies while making state-of-charge, reliability, and equipment constraints explicit.
+
+#### Grid operations, faults, and restoration
+
+Electrical-grid dynamics can change rapidly in response to discrete switching events, generator trips, line faults, protection actions, islanding, restoration decisions, and weather-related disruptions. Continuous states may include voltage, frequency, power flows, thermal loading, and reserve margins.
+
+Potential applications include contingency analysis, fault response, restoration sequencing, protection-policy testing, and resilience planning. Real-world deployment requires high-quality system data, strong safety controls, and domain-specific validation.
+
+Power systems are a mature hybrid-systems domain. Voltage, frequency, power flow, thermal loading, and machine or converter states evolve continuously, while faults, protection-device actions, line trips, switching, islanding, reconnection, and restoration decisions produce discrete transitions. Mature tools already support power flow, transient stability, electromagnetic-transient simulation, protection studies, and grid planning.
+
+`hybrid-ds-julia` should therefore be framed as complementary for reduced-order event-aware models, methodological research, sensitivity studies, and optimization prototypes rather than as a replacement for power-system simulation suites. Event-time sensitivity and reset-aware trajectory analysis may be useful when evaluating protection thresholds, switching policies, or restoration sequences.
+
+### Supply chains, logistics, and operations
+
+#### Inventory, routing, and service-level policies
+
+Supply-chain systems combine continuously changing inventory, demand, capacity, lead times, quality, and cost with discrete decisions such as ordering, shipment, routing, allocation, stockout, expedited delivery, and supplier disruption.
+
+Hybrid models can support reorder policies, safety-stock design, allocation strategies, service-level analysis, disruption planning, and sensitivity analysis for uncertain demand or lead times.
+
+Supply-chain research already relies heavily on discrete-event simulation, mathematical programming, agent-based models, stochastic control, and simulation optimization. `hybrid-ds-julia` is most appropriate when meaningful continuous dynamics must be retained—for example, perishable-inventory decay, equipment wear, energy use, fluid or bulk-material levels, temperature-sensitive quality loss, or continuously evolving demand and capacity signals.
+
+Sensitivity analysis can clarify which lead-time, demand, degradation, or capacity assumptions dominate a policy result, while optimization can compare constrained reorder or maintenance policies. Where the system is primarily discrete, established optimization and discrete-event tools will usually be the better primary choice.
+
+#### Production planning and maintenance
+
+Production systems combine continuous machine condition, work-in-process, throughput, and energy use with discrete events such as job release, setup, tool replacement, machine failure, repair, shift change, quality inspection, and production rescheduling.
+
+Possible applications include maintenance scheduling, bottleneck analysis, production sequencing, spare-parts planning, and evaluation of resilience to equipment failure or fluctuating demand.
+
+This area already has mature scheduling, reliability, optimization, and discrete-event simulation methods. `hybrid-ds-julia` may be useful when a continuous degradation, quality, inventory, thermal, or process state affects the timing and consequences of discrete planning decisions. It is not intended to displace specialized mixed-integer scheduling or discrete-event manufacturing tools when continuous dynamics are secondary.
+
+### Ecosystems, agriculture, and environmental management
+
+#### Crop growth, irrigation, and pest management
+
+Agricultural systems have continuous states such as soil moisture, nutrient availability, crop biomass, plant stress, pest population, and weather-driven growth. Discrete events include planting, irrigation, fertilizer application, pesticide treatment, harvest, rainfall events, equipment failure, and regulatory restrictions.
+
+Hybrid models can support irrigation scheduling, pest-management strategies, input optimization, yield-risk analysis, and assessment of weather-sensitive farm-management policies.
+
+Agricultural modeling already uses crop simulators, soil-water models, weather forecasts, optimal control, precision-agriculture tools, and integrated pest-management frameworks. `hybrid-ds-julia` can provide a compact event-aware framework for simplified or reduced-order models in which irrigation, planting, fertilization, spraying, harvest, or policy restrictions alter continuously evolving crop, soil, water, or pest states.
+
+Sensitivity analysis can identify which growth, weather, soil, and intervention parameters dominate an outcome. Constrained optimization can compare management policies while respecting water availability, input limits, environmental constraints, and uncertainty. Results should be interpreted alongside domain-specific crop, hydrology, and climate models when operational accuracy is required.
+
+#### Fisheries, wildlife, and invasive-species control
+
+Population dynamics, habitat condition, resource availability, and disease prevalence may evolve continuously, while harvest seasons, stocking, habitat interventions, hunting quotas, surveillance detections, barriers, and control actions occur discretely.
+
+Potential applications include harvest-policy design, invasive-species response, surveillance planning, intervention timing, and comparison of conservation strategies under ecological uncertainty.
+
+Ecological modeling already uses population dynamics, optimal harvesting, impulsive differential equations, seasonal management, and stochastic simulation. Hybrid models are natural when continuous population or habitat states interact with seasonal harvest, stocking, detection, release, barrier, or control events.
+
+`hybrid-ds-julia` can support hypothesis-driven policy comparisons and sensitivity analysis, but ecological predictions remain constrained by observation uncertainty, model misspecification, climate variability, and the possibility of unmeasured ecological interactions.
+
+#### Water, land, and climate-adaptation systems
+
+Water reservoirs, groundwater, soil moisture, land condition, pollutant concentration, and ecosystem resilience can evolve continuously. Discrete events include releases, pumping, irrigation restrictions, flood-control actions, infrastructure failures, wildfire, land-use changes, and emergency policy measures.
+
+Hybrid models can assist scenario analysis, infrastructure planning, drought and flood management, adaptive water allocation, and robustness analysis under climate uncertainty.
+
+Hydrologic, climate, and land-management fields already maintain sophisticated domain models. `hybrid-ds-julia` is most relevant for transparent reduced-order models, threshold-policy prototypes, and event-aware management analysis rather than replacement of comprehensive hydrologic, climate, or geographic simulation systems.
+
+### Infrastructure, robotics, and engineered systems
+
+#### Buildings, HVAC, and thermal management
+
+Buildings and thermal systems have continuously evolving temperature, humidity, occupancy-related loads, energy use, and equipment condition. Discrete events include thermostat changes, occupancy transitions, maintenance, equipment faults, demand-response signals, and changes in operating mode.
+
+Potential applications include energy optimization, fault detection, comfort-management policies, maintenance scheduling, and evaluation of control strategies under changing weather and occupancy.
+
+Hybrid control, system identification, and model-predictive control are established approaches in building-energy research. Thermal mass, temperature, humidity, storage state, and energy use evolve continuously, while thermostats, compressors, occupancy changes, demand-response commands, faults, and controller modes produce discrete transitions.
+
+`hybrid-ds-julia` can be used for reduced-order thermal models, event-aware threshold-policy simulations, sensitivity analysis for uncertain loads and heat-transfer parameters, and constrained optimization of comfort-versus-energy tradeoffs. It complements rather than replaces detailed building-energy simulators and building-management systems.
+
+#### Transportation and autonomous systems
+
+Transportation systems involve continuous motion, fuel or battery state, traffic flow, vehicle health, and environmental conditions, alongside discrete events such as route changes, intersections, signal changes, charging stops, incidents, passenger pickup or dropoff, and vehicle failures.
+
+Hybrid models may support routing, fleet dispatch, charging policies, traffic-control design, safety analysis, and testing of control policies in simulated operating conditions.
+
+Transportation and autonomous-systems research already includes hybrid automata, model-predictive control, traffic-flow models, vehicle dynamics, routing algorithms, formal verification, and simulation environments. `hybrid-ds-julia` can support reduced-order event-aware simulations, sensitivity analysis of threshold and timing assumptions, and constrained policy optimization.
+
+High-fidelity vehicle simulation, safety assurance, and formal verification remain the province of specialized tools and domain-specific workflows.
+
+#### Robotics, inspection, and fault management
+
+Robotics is a foundational hybrid-systems domain. Continuous robot dynamics interact with discrete contact, impact, grasp, release, controller switching, perception updates, task transitions, replanning, faults, and human intervention.
+
+Specialized multibody platforms already support detailed robotic simulation. For example, platforms such as Drake provide APIs for bodies, joints, frames, actuators, force elements, geometry, gravity, springs, and contact. These tools are appropriate when a user can provide a detailed mechanical specification. They are not the intended replacement target for `hybrid-ds-julia`.
+
+Detailed robotics software can represent compliance through springs, force elements, compliant contact, and related constitutive models. The practical distinction is not whether compliance is possible; it is that these tools require the user to formulate a mechanical multibody system and select its contact and compliance representation.
+
+`hybrid-ds-julia` is complementary. It can support lower-dimensional or non-rigid-body models in which the investigator states continuous equations and event maps directly. This includes reduced-order control models, event-triggered policy models, biologically motivated sensorimotor models, plant-plus-controller models, and cross-domain hybrid systems whose state equations do not originate in a multibody description.
+
+Sensitivity analysis of event timing and reset maps can inform threshold selection and robustness studies. Optimization can compare controller, inspection, or fault-management policies subject to explicit constraints. The package should not be described as a substitute for high-fidelity mechanical simulation, established robotics middleware, or formal safety verification.
+
+#### Postural control, locomotion, and sensorimotor behavior
+
+Human and robotic balance and locomotion combine continuous biomechanical and neural-control dynamics with discrete events such as foot contact, lift-off, heel strike, toe-off, perturbations, sensory changes, controller switching, recovery steps, and transitions between behavioral or gait phases.
+
+Legged locomotion is a canonical hybrid dynamical-system problem. Continuous dynamics evolve during stance and swing, while contact transitions and impact maps introduce discrete changes. Existing work includes hybrid zero dynamics, virtual constraints, compliant-leg and spring-mass models, contact and impact mechanics, phase-dependent control, and gait optimization.
+
+`hybrid-ds-julia` is not intended to replace detailed multibody and gait-design tools. It can complement them for lower-dimensional, interpretable models in which the researcher specifies the equations, switching surfaces, reset maps, sensory signals, estimators, and control rules directly.
+
+Potential applications include:
+
+- Inverted-pendulum stance models
+- Multi-segment posture models
+- Spring-mass and compliant-leg locomotion
+- Stance-to-step transitions
+- Perturbation and recovery responses
+- Sensory reweighting
+- Delayed sensory feedback
+- Phase-dependent visual, vestibular, tactile, or proprioceptive control
+- Event-triggered balance corrections
+- Active sensing and sensorimotor adaptation
+
+Hybrid sensitivity analysis is especially relevant because perturbations can alter both contact timing and post-impact state. Optimization can compare stable gait, recovery, sensing, or control policies while making the corresponding assumptions explicit.
+
+### Specific labs and authors
+
+The examples in this section identify research programs whose published work is potentially relevant to the scientific and technical scope of `hybrid-ds-julia`. They are included as invitations to technical scrutiny, not as endorsements or claims of collaboration. In each case, the relevant question is whether the package's combination of continuous-time ODE models, explicit events, threshold rules, reset maps, sensitivity analysis, and constrained optimization would usefully complement existing domain-specific theory, software, experiments, and analysis workflows.
+
+These research programs already use sophisticated modeling, estimation, control, simulation, and experimental methods. `hybrid-ds-julia` is not intended to replace established specialized tools. Its potential value is as a transparent Julia-native environment for reduced-order or mechanistic hybrid models in which the researcher directly specifies continuous dynamics and the discrete events that alter them.
+
+#### Jeka and Kiemel: human postural control and locomotion
+
+John Jeka and Tim Kiemel's work on human upright posture, multisensory integration, multijoint coordination, balance, locomotion, and system identification provides an especially direct scientific motivation for interpretable hybrid sensorimotor models.
+
+Their research combines structured perturbation experiments, sensory manipulation, feedback-control models, biomechanical plant models, state estimation, and system-identification approaches. This body of work illustrates how a model can be meaningfully tied to experimental data rather than used only as a generic simulation.
+
+A reduced postural-control model may contain continuous states for body-segment position and velocity, center-of-mass motion, muscle activation, sensory estimates, controller states, or sensory weights. Events may include perturbation onset and offset, sensory-reference changes, foot contact, stepping thresholds, recovery steps, changes in visual or support-surface conditions, and controller-mode transitions.
+
+A generic formulation might be:
 
 \[
-\dot{N}
-=
-rN
-\left(
-1-\frac{N}{K}
-\right)
--
-\frac{aNP}{1+bN},
+\dot{x}(t)=f_{q(t)}(x(t),u(t),\theta),
 \]
 
-\[
-\dot{P}
-=
-c\frac{aNP}{1+bN}
--
-dP,
-\]
+where the state includes biomechanical and neural-control variables, the input includes visual, vestibular, proprioceptive, tactile, or platform-perturbation signals, and the mode represents stance, stepping, recovery, sensory context, or controller configuration.
 
-where \(N\) is prey or pest abundance and \(P\) is predator abundance.
-
-A management intervention can be represented by a pulse or reset map. For example, pesticide application at time \(t_k\) might produce
-
-\[
-N(t_k^+)
-=
-(1-\rho_k)N(t_k^-),
-\]
-
-while periodic predator release could produce
-
-\[
-P(t_k^+)
-=
-P(t_k^-)
-+
-R_k.
-\]
-
-State-triggered intervention rules are also common. A pest-management policy may apply control only when pest abundance exceeds a threshold:
-
-\[
-N(t)
-\geq
-N_{\mathrm{threshold}}.
-\]
-
-This naturally creates a hybrid system in which management actions depend on the evolving ecological state.
-
-Potential uses of `hybrid-ds-julia` include:
-
-- comparing the timing and intensity of pesticide or biological-control pulses,
-- optimizing harvesting or stocking schedules,
-- identifying threshold policies that avoid pest outbreaks,
-- studying resilience and recovery after interventions,
-- and analyzing how uncertainty in growth or predation rates affects management outcomes.
-
-### Crop growth, canopy competition, and precision agriculture
-
-Crop and plant-growth models combine continuous developmental and physiological processes with discrete management events such as planting, irrigation, fertilization, pesticide application, pruning, harvest, and abrupt weather changes.
-
-A stylized crop-growth model may include biomass \(W\), soil-water availability \(M\), nutrient availability \(N\), and canopy state \(L\):
-
-\[
-\dot{W}
-=
-\alpha L
-\frac{M}{K_M+M}
-\frac{N}{K_N+N}
--
-\delta_W W,
-\]
-
-\[
-\dot{M}
-=
-I(t)
--
-u_M(W,L,M)
--
-\ell_M(M),
-\]
-
-\[
-\dot{N}
-=
-F(t)
--
-u_N(W,L,N)
--
-\ell_N(N),
-\]
-
-where \(I(t)\) and \(F(t)\) represent irrigation and fertilizer inputs.
-
-Discrete management events may be represented by impulsive updates such as
-
-\[
-M(t_k^+)
-=
-M(t_k^-)
-+
-\Delta M_k,
-\]
-
-\[
-N(t_k^+)
-=
-N(t_k^-)
-+
-\Delta N_k.
-\]
-
-A state-dependent precision-agriculture policy might trigger irrigation when soil moisture falls below a threshold:
-
-\[
-M(t)
-\leq
-M_{\mathrm{irrigation}}.
-\]
-
-Similarly, fertilization, pest intervention, or canopy management may be activated only when one or more sensor-derived variables enter a specified range.
-
-Hybrid methods are relevant because the timing of those interventions can strongly affect cumulative growth, resource use, and final yield. A small change in irrigation timing, for example, may matter much more during a sensitive growth stage than at another point in the season.
+The potential role of `hybrid-ds-julia` would be to implement reduced-order models transparently. For example, it could support an inverted-pendulum or multi-segment plant coupled to a sensory estimator and feedback controller, with explicit delayed feedback, perturbation events, state-dependent stepping thresholds, and reset maps associated with contact or recovery.
 
 Potential uses include:
 
-- optimizing irrigation and fertilization schedules,
-- comparing threshold-based versus fixed-calendar interventions,
-- quantifying sensitivity of yield to timing and dose of inputs,
-- analyzing crop-response regimes under different environmental conditions,
-- and incorporating weather, sensor, or management events into a coherent dynamical model.
+- Simulating sensory perturbation experiments with explicit event timing
+- Comparing sensory reweighting, state-estimation, and controller-gain hypotheses
+- Modeling stance-to-step transitions or balance-recovery actions
+- Studying how delays, noise, and sensory availability affect stability
+- Performing sensitivity analysis for sensory gains, mechanical parameters, thresholds, and delays
+- Comparing control policies subject to realistic force, stepping, or stability constraints
+- Designing perturbation protocols that discriminate among competing hypotheses
 
-### Gene regulatory networks, cell-cycle control, and synthetic biology
+The package should not be assumed to replace the laboratory's existing experimental, theoretical, and identification methods. The relevant question is whether its explicit event, reset, and sensitivity semantics would make particular lower-dimensional models easier to reproduce, compare, or extend.
 
-Gene regulatory networks often exhibit thresholding, switching, pulses, feedback, and state-dependent transitions. These features arise naturally from transcriptional regulation, bistability, cell-cycle checkpoints, inducible expression systems, optogenetic stimulation, and experimental interventions.
+#### Ahrens Lab: whole-brain zebrafish sensorimotor behavior
 
-A simple regulatory interaction can be represented using a Hill-function response:
+The Ahrens Lab at HHMI Janelia Research Campus studies how large neuronal populations support flexible behavior in larval zebrafish. Its experimental approach combines whole-brain imaging, virtual-reality behavioral paradigms, fictive locomotor recordings, computational analysis, genetics, anatomy, and targeted perturbation. The laboratory's work on motor adaptation, sensorimotor transformations, behavioral-state switching, and positional homeostasis is particularly relevant to reduced-order hybrid dynamical models.
+
+The potential fit is not that whole-brain neural data should be replaced by a low-dimensional ODE model. Rather, a hybrid model could provide a compact and falsifiable representation of a specific mechanistic hypothesis: a small number of neural, sensory, behavioral, or internal-estimate variables evolve continuously; experimentally imposed perturbations and behavioral actions occur as discrete events; and explicit feedback links motor output to the subsequent sensory environment.
+
+For example, in closed-loop virtual-reality paradigms, fictive swim output changes visual feedback, which changes sensory input and then changes later neural activity and motor output. A model might include continuous states for sensory evidence, motor-vigor drive, estimated self-location, accumulated prediction error, neural-population activity, or glial state. It could include discrete events for swim bouts, stimulus onset or offset, changes in visuomotor gain, externally imposed displacement, action-outcome mismatch, behavioral-state transitions, and experimental perturbations.
+
+A general state-and-event representation could be written as:
 
 \[
-\dot{x}
-=
-\frac{\alpha}{1+\left(\frac{y}{K}\right)^n}
--
-\delta_x x,
+\dot{x}(t)=f_{q(t)}\bigl(x(t),u(t),\theta\bigr),
+\]
+
+where \(x(t)\) represents a reduced neural-behavioral state, \(u(t)\) represents sensory input or experimental drive, \(\theta\) contains physiological and control parameters, and \(q(t)\) identifies an active behavioral or experimental mode. At an event condition \(g_i(x,t)=0\), the mode and state could change through:
+
+\[
+x^+=R_i(x^-,\theta),
+\qquad
+q^+=T_i(q^-,x^-).
+\]
+
+The important scientific question is whether a proposed state, guard, or reset corresponds to experimentally observable quantities and predicts data not used for fitting.
+
+Motor-adaptation experiments with altered visual feedback in a closed-loop virtual environment provide one useful target. In a hybrid formulation, a visual-gain manipulation is an experimental mode switch; fictive swim bouts are discrete motor events; neural and adaptation variables may evolve continuously between bouts; and predictions can be compared with neural activity, behavioral output, and the time course of recalibration. Sensitivity analysis could ask whether predicted adaptation depends most strongly on feedback gain, sensory delay, adaptation time constant, or an internal prediction-error gain.
+
+Brain-wide sensorimotor-transformation experiments suggest a modular architecture that separates sensory encoding, intermediate sensorimotor transformation, motor command, and locomotor output. A reduced hybrid model should not equate correlation with instantaneous motor output to causal motor command. It could instead compare feedforward sensory-to-motor mapping, recurrent state estimation, or state-dependent action-selection architectures against data obtained under multiple visual-feedback conditions.
+
+Behavioral-state switching after unsuccessful action is an especially direct candidate for a threshold model. A stylized hypothesis could include a continuous variable \(e(t)\) representing accumulated evidence that action is futile:
+
+\[
+\dot{e}(t)=-\lambda e(t)
+\]
+
+between swimming events, with a discrete update after an unsuccessful bout:
+
+\[
+e^+=e^-+\alpha.
+\]
+
+A threshold condition could define a transition from an active mode to a suppressed or passive behavioral mode:
+
+\[
+q^+=\mathrm{passive}
+\quad\text{when}\quad
+e(t)\geq\vartheta.
+\]
+
+This is a stylized hypothesis, not a claim that the biological system follows this exact equation. Its value would be to make assumptions about integration, decay, thresholding, and recovery explicit and quantitatively testable against behavioral and neural/glial data. Competing models could use nonlinear accumulation, state-dependent thresholds, stochastic event effects, adaptation of \(\alpha\), or an additional latent arousal state.
+
+Work on self-location memory and positional homeostasis provides another natural control-theoretic example. A model could include an internal self-location estimate:
+
+\[
+\dot{\hat{p}}(t)=v_{\mathrm{self}}(t),
+\qquad
+e_p(t)=p_{\mathrm{reference}}-\hat{p}(t),
+\]
+
+where \(\hat{p}(t)\) is an internal position estimate and \(e_p(t)\) is a position error. An imposed displacement can be represented as a reset or perturbation to physical position, sensory input, internal estimate, or some combination, depending on the mechanistic hypothesis. Corrective swim-bout probability, direction, vigor, or termination could be modeled as a state-dependent event policy.
+
+Potential uses of `hybrid-ds-julia` in this setting include:
+
+- Simulation of closed-loop virtual-environment protocols with explicit sensory delay and visuomotor gain changes
+- Reduced-order models of motor adaptation, sensory prediction error, and behavioral-state switching
+- Event-aware estimation of parameters from neural, glial, fictive-swim, and behavioral data
+- Comparison of alternative reset maps for imposed displacement, failed action, sensory perturbation, or behavioral transition
+- Sensitivity analysis for feedback gain, delay, evidence accumulation, state decay, threshold location, and controller gain
+- Simulation-based comparison of competing mechanistic hypotheses
+- Constrained optimization of perturbation timing or gain schedules to distinguish between competing models
+
+The limitation is equally important. Whole-brain neural data are high dimensional, experimentally rich, and shaped by circuitry that cannot in general be reduced to a small number of ODE states without strong assumptions. Any use of `hybrid-ds-julia` would therefore need a deliberately limited scientific target, biologically interpretable reduced states, a clear measurement model, alternative-hypothesis comparison, and tests using held-out perturbation conditions.
+
+The package would complement—not replace—whole-brain imaging pipelines, statistical neural-population analysis, machine learning, circuit mapping, or causal perturbation experiments.
+
+#### Cowan and the LIMBS Laboratory: locomotion, active sensing, system identification, and hybrid mechanics
+
+The Locomotion in Mechanical and Biological Systems (LIMBS) Laboratory, directed by Noah J. Cowan at Johns Hopkins University, studies how animals and robots move, sense, navigate, adapt, and control behavior. Its work spans control theory, nonlinear and geometric mechanics, system identification, robotics, active sensing, neuromechanics, animal locomotion, and experimental analysis of biological control systems.
+
+This research program is already deeply connected to the mathematical territory of hybrid dynamical systems. Contacts, impacts, gait transitions, task changes, mode switches, sensory perturbations, actuator saturation, threshold-triggered behaviors, and intermittent control can all introduce discontinuous changes into otherwise continuous mechanical and neural dynamics.
+
+The relevant question is therefore not whether the LIMBS Laboratory needs a generic claim that hybrid systems are important. The specific question is whether `hybrid-ds-julia` could provide a useful and technically correct implementation environment for a particular class of reduced-order models, experimental protocols, sensitivity calculations, or optimization problems.
+
+The intended role for `hybrid-ds-julia` would be complementary to established robotics, control, identification, and simulation tools. It would not replace multibody simulators, geometric-mechanics formulations, experiment-specific identification methods, robot middleware, or mature optimal-control workflows. Its possible niche is a transparent Julia-native workflow in which a researcher directly specifies:
+
+- A continuous-time plant, controller, estimator, or sensory-state model
+- Guard conditions defining contact, behavioral, measurement, or protocol events
+- Reset maps, parameter changes, or mode transitions at those events
+- A schedule of externally imposed perturbations or sensory manipulations
+- Objectives, constraints, and parameter sets for sensitivity analysis or policy comparison
+
+A generic reduced-order formulation might be:
+
+\[
+\dot{x}(t)=f_{q(t)}\bigl(x(t),u(t),\theta\bigr),
+\]
+
+where \(x(t)\) contains mechanical, sensory, neural, controller, or estimator states; \(u(t)\) denotes external forcing or measured sensory input; \(\theta\) contains plant, controller, and measurement parameters; and \(q(t)\) denotes an active contact, gait, behavioral, or controller mode. An event may be defined by:
+
+\[
+g_i(x,t,\theta)=0,
+\]
+
+with a state and mode update:
+
+\[
+x^+=R_i(x^-,\theta),
+\qquad
+q^+=T_i(q^-,x^-).
+\]
+
+The technical value of this representation is that event conditions and event maps are first-class model components rather than informal post-processing logic. It permits a modeler to ask how conclusions change when an impact occurs earlier or later, when a sensory threshold is crossed, when an actuator saturates, when a controller switches, or when an experiment introduces a perturbation.
+
+The LIMBS Laboratory's work on animal locomotion and active sensing provides several plausible test cases. In mechanical locomotion, continuous state may include position, velocity, body orientation, joint configuration, internal compliance, actuator state, and controller state. Discrete events may include foot contact, lift-off, collision, stick-slip transition, takeoff, landing, gait-phase change, or perturbation-triggered recovery step. In active sensing, the state may additionally include a sensory reference, internal estimate, or policy variable; discrete events may include probe movements, sensory sampling, abrupt stimulus changes, or switches between tracking and exploratory behavior.
+
+The laboratory's research on the relation between mechanics and sensory decoding is especially relevant. Work on refuge tracking in weakly electric knifefish emphasizes that locomotor mechanics shape sensory information, and that understanding the sensory system requires modeling the closed loop between the animal, its plant, its movement, and its sensory input. A hybrid extension becomes appropriate when the experiment or hypothesized controller involves discrete sensory movements, abrupt perturbations, mode changes, contact events, or thresholded behavioral decisions.
+
+Potential uses of `hybrid-ds-julia` in this research area include:
+
+- Reduced-order models of locomotor plants coupled to neural feedback controllers
+- Simulation of stance, stepping, contact, lift-off, and perturbation-recovery transitions
+- Explicit experimental-protocol models with visual, vestibular, tactile, mechanical, or electrosensory stimuli that change at scheduled or state-dependent times
+- Active-sensing models with intermittent measurements, sampling actions, state-dependent probing, or mode-dependent sensory gains
+- Closed-loop system-identification studies comparing plant, controller, estimator, delay, noise, and event assumptions
+- Sensitivity analysis for feedback gain, mechanical stiffness, damping, sensory delay, threshold placement, reset-map parameters, and event-time variation
+- Optimization of constrained controller, sensing, or perturbation policies
+- Reproducible compact examples that expose equations, events, assumptions, and diagnostics directly
+
+Hybrid sensitivity requires special care. In a smooth ODE model, sensitivities can be obtained by integrating variational equations. In a hybrid model, a parameter perturbation can also change the time at which an event occurs and the post-event state. A correct first-order calculation must therefore account for both continuous evolution and event-induced variation, for example through a saltation-matrix or equivalent reset-aware update.
+
+The most important questions for the LIMBS Laboratory are concrete:
+
+1. Which research models would benefit from an explicit ODE-plus-guard-plus-reset interface rather than an existing multibody, control, or identification workflow?
+2. Are there scientifically useful reduced-order examples in locomotion, active sensing, or experimental perturbation for which event-time sensitivity is central?
+3. What event semantics, differentiation behavior, optimization interface, or numerical diagnostics would be required for the package to be technically trustworthy in this setting?
+4. Which existing workflows should the package interoperate with, rather than attempt to reproduce?
+5. Can one identify a compact benchmark in which the package adds reproducibility, interpretable event logic, or sensitivity analysis beyond what present tools already provide?
+
+The package should be judged useful only if it addresses a real gap in those questions. It should not be described as a replacement for established expertise in nonlinear mechanics, closed-loop identification, control, or robotic experimentation.
+
+#### Fortune: feedback control, locomotor variability, and active sensing in weakly electric fish
+
+Eric S. Fortune studies mechanisms and evolution of animal behavior, with important work on sensorimotor control, active sensing, locomotion, electrosensory behavior, refuge tracking, behavioral variability, and feedback control in weakly electric fish. He is currently an Associate Professor of Biological Sciences at the New Jersey Institute of Technology.
+
+The potential relevance of `hybrid-ds-julia` is strongest where a model must represent continuous closed-loop locomotor and sensory dynamics together with explicitly discrete actions, manipulations, or behavioral modes. It is not that refuge tracking or active sensing must be treated as hybrid by default. Many experimental tasks can be analyzed well with smooth linear, nonlinear, frequency-domain, or system-identification methods. A hybrid representation becomes worthwhile only when the scientific question depends on transitions, intermittent actions, state-dependent sensing, abrupt environmental changes, trial-protocol events, or mode-dependent control.
+
+A generic closed-loop formulation might separate plant, controller, and sensory dynamics:
+
+\[
+\dot{x}_p=f_p(x_p,u,\theta_p),
 \]
 
 \[
-\dot{y}
-=
-\frac{\beta x^m}{L^m+x^m}
--
-\delta_y y.
-\]
-
-Depending on parameters, such systems can display switch-like behavior, oscillations, or multiple stable states.
-
-Hybrid structure enters when a regulatory program changes at a threshold or when an experiment applies a pulse. For example, an inducible expression experiment might update an input state at selected times:
-
-\[
-u(t_k^+)
-=
-u(t_k^-)
-+
-A_k.
-\]
-
-A cell-cycle checkpoint may activate when a damage variable exceeds a threshold, changing the active regulatory dynamics:
-
-\[
-D(t)
-\geq
-D_{\mathrm{checkpoint}}.
-\]
-
-Synthetic-biology control systems can also contain explicit mode changes, such as light-on/light-off stimulation protocols, nutrient shifts, temperature changes, or feedback controllers that switch based on fluorescent reporter levels.
-
-Potential uses include:
-
-- optimizing pulse timing for gene-expression control,
-- studying sensitivity of switching behavior to parameter uncertainty,
-- identifying interventions that move a system between stable phenotypic states,
-- designing feedback rules for synthetic circuits,
-- and estimating event-aware sensitivities in models with checkpoint or threshold logic.
-
-### Microbial communities, bioreactors, and pulsed interventions
-
-Microbial communities and bioreactor systems often involve continuous growth, substrate consumption, metabolite production, competition, and feedback together with pulsed feeding, dilution, inoculation, antibiotic exposure, environmental shifts, and threshold-based control.
-
-A simple chemostat-style model may include microbial biomass \(X\), substrate \(S\), and product \(P\):
-
-\[
-\dot{X}
-=
-\mu(S)X
--
-D X,
+\dot{x}_c=f_c(x_c,y,\theta_c),
 \]
 
 \[
-\dot{S}
-=
-D(S_{\mathrm{in}}-S)
--
-\frac{1}{Y}\mu(S)X,
+u=\pi_{q(t)}(x_c,y,\theta_\pi),
 \]
+
+where \(x_p\) represents locomotor plant state, \(x_c\) represents internal controller or estimator state, \(y\) represents sensory input, and \(q(t)\) represents a behavioral or experimental mode. The sensory signal may depend on both animal motion and environment:
 
 \[
-\dot{P}
-=
-q_P(S)X
--
-D P,
+y(t)=h\bigl(x_p(t),r(t),\theta_s\bigr)+\eta(t),
 \]
 
-where \(D\) is a dilution rate, \(Y\) is a yield coefficient, and \(\mu(S)\) describes substrate-limited growth.
+where \(r(t)\) is refuge or environmental motion and \(\eta(t)\) represents sensory or measurement noise.
 
-A pulsed feeding event can be represented by
+A hybrid extension can represent events such as:
+
+- Onset, offset, or abrupt phase changes of refuge motion
+- Transitions between predictable and unpredictable stimulus regimes
+- Changes in refuge dynamics or destabilizing feedback
+- Discrete probe movements or active-sensing actions
+- Sensory perturbation, temporary occlusion, jamming, or social electrosensory events
+- Threshold-triggered changes in tracking gain, body position, swimming direction, or control strategy
+- Trial boundaries, conditioning events, or changes in sensory context
+- Switching between locomotor, exploratory, stationary, or recovery modes
+
+Research on the critical role of locomotion mechanics in decoding sensory systems provides a key conceptual basis. Refuge tracking in *Eigenmannia* is useful for sensorimotor-control research precisely because locomotor mechanics and sensory encoding must be understood together in closed loop. The package could support a reduced-order implementation in which fish mechanics, sensory-image dynamics, neural control, and experimental forcing are explicit components.
+
+This would allow investigators to test which conclusions depend on plant dynamics, controller dynamics, sensory delay, feedback gain, or stimulus structure. An experiment could compare modes such as:
 
 \[
-S(t_k^+)
-=
-S(t_k^-)
-+
-F_k.
+q\in\{
+\mathrm{predictable},
+\mathrm{unpredictable},
+\mathrm{sensory\ cue\ available},
+\mathrm{sensory\ cue\ absent}
+\},
 \]
 
-A contamination, inhibition, or oxygen-limitation event may trigger a change in the governing dynamics when a metabolite or process variable crosses a threshold.
+with each mode selecting a different controller gain, estimator gain, delay, noise level, or active-sensing policy.
 
-In microbial ecology, similar structures arise through antibiotic pulses, nutrient switching, periodic disturbance, inoculation, or host-mediated environmental changes. These events can alter community composition, drive transitions between ecological states, or create history-dependent responses that are not captured well by purely smooth models.
+The point would not be to infer an unobserved controller from a small dataset without constraint. Rather, the model would formalize competing hypotheses and ask whether they make distinguishable predictions under carefully designed perturbation experiments.
 
-Potential uses include:
-
-- optimizing feed schedules and dilution policies in bioreactors,
-- analyzing resilience of microbial communities after pulsed perturbations,
-- studying antibiotic scheduling and resistance dynamics,
-- comparing threshold-based versus periodic control rules,
-- and using event-aware sensitivities to identify parameters that control transitions between productive and unproductive regimes.
-
-### Epidemiology, public-health policy, and adaptive intervention
-
-Epidemiological systems have continuous transmission, progression, recovery, and immunity dynamics, but policy and care pathways routinely introduce hybrid structure. Vaccination campaigns, school or workplace closures, antiviral treatment starts, isolation protocols, testing thresholds, hospital-capacity triggers, and changes in public-health guidance can all change the effective dynamics at specific times or when surveillance indicators cross a threshold.
-
-A basic susceptible–infectious–recovered model can be written as
+Work on sensorimotor adaptation to destabilizing dynamics is particularly suitable for this kind of model. A gradual or abrupt change in the relation between fish movement and sensory consequences can be represented as a parameter change in the plant, sensory environment, or closed-loop feedback pathway. The model could compare competing explanations:
 
 \[
-\dot{S}
-=
--\beta(t)\frac{SI}{N},
+\text{plant adaptation},
+\qquad
+\text{controller-gain adaptation},
+\qquad
+\text{state-estimator adaptation},
+\qquad
+\text{mode switching},
 \]
+
+or combinations of these mechanisms.
+
+Potential uses of `hybrid-ds-julia` in this setting include:
+
+- Event-aware closed-loop simulations of refuge tracking and active-sensing tasks
+- Joint plant-controller-estimator models with explicit feedback and perturbation protocols
+- Comparison of smooth versus switching control laws under predictable, destabilizing, or noisy conditions
+- Sensitivity analysis for plant parameters, sensory delay, feedback gain, internal-model parameters, noise level, and transition thresholds
+- Analysis of how trial timing or stimulus structure affects identifiability of plant and controller parameters
+- Optimization of perturbation schedules or stimulus designs that distinguish competing feedback-control hypotheses
+- Simulation of individual variability in locomotor plant dynamics and robustness to controller/plant mismatch
+- Explicit representation of trial boundaries and intervention times as part of the model
+
+The relationship between individual variability and feedback control is especially important. If different animals have different locomotor plants but performance remains robust, a model can ask whether the controller is individualized, whether feedback compensates for mismatch, or whether multiple plant/controller pairs produce similarly effective closed-loop behavior.
+
+The central technical challenge is closed-loop identification. Because the animal's action changes the sensory stimulus later used to infer the controller, open-loop assumptions can produce biased or misleading estimates. A hybrid model adds another requirement: if events change the stimulus, controller, or state, parameter sensitivities must include changed event timing and reset maps.
+
+Questions for Dr. Fortune and collaborators include:
+
+1. Which experimental phenomena genuinely require a discrete mode, event, or reset model rather than a smooth closed-loop representation?
+2. Are stimulus-predictability changes, active-sensing actions, trial events, or destabilizing perturbations best modeled as externally scheduled inputs, state-triggered events, or changes in controller architecture?
+3. Would reset-aware sensitivity analysis add scientific value in designing experiments or testing robustness of closed-loop hypotheses?
+4. What quantities are observable well enough to constrain a reduced-order hybrid model?
+5. Which results would demonstrate that the package adds value beyond established frequency-domain, system-identification, and control-theoretic tools?
+
+`hybrid-ds-julia` should be useful here only as a transparent hypothesis-testing and simulation environment. It should not be presented as a replacement for detailed experimental analysis, closed-loop system identification, or the biological insight that comes from the fish model itself.
+
+#### Hines and the NEURON ecosystem: neural and network simulation with events, discontinuities, and multiscale control
+
+Michael L. Hines has made foundational contributions to computational neuroscience through the NEURON simulation environment and related work on numerical methods, variable-step integration, parallel neural-network simulation, event-driven mechanisms, interoperability, and reproducible modeling. NEURON is a mature and extensively validated environment for simulating biophysically detailed neurons and neural networks, including compartmental morphology, cable equations, membrane mechanisms, ion channels, synapses, stochastic processes, stimulation, and distributed network computation.
+
+The relationship between `hybrid-ds-julia` and NEURON must therefore be stated with particular care. `hybrid-ds-julia` is not intended to compete with, replace, or reproduce NEURON. A general ODE-and-event package would not provide NEURON's mature infrastructure for morphologically detailed cable models, domain-specific model descriptions, synaptic event handling, mechanism libraries, network simulation, variable-step solvers, parallel execution, validation history, ModelDB ecosystem, or broad community expertise.
+
+The possible role for `hybrid-ds-julia` is instead at a different modeling layer: reduced-order, system-level, experimental-protocol, control, optimization, or cross-domain models in which neural or cellular dynamics interact with externally defined discrete interventions, policies, thresholds, and non-neural states.
+
+In that role, the package might serve as:
+
+- A compact environment for low-dimensional neural mass, neural population, conductance-based, oscillator, or state-space surrogate models
+- A systems-level wrapper around a reduced neural model coupled to behavior, biomechanics, pharmacology, stimulation, or experimental control
+- A tool for explicit intervention schedules, threshold-triggered stimulation, adaptive closed-loop control, dosing events, and experimental-protocol logic
+- A platform for sensitivity analysis and constrained optimization of systems that include neural states but are not principally compartmental-neuron simulations
+- A possible pre- or post-processing companion to detailed NEURON simulations, if a scientifically and technically sound coupling interface can be defined
+
+A reduced-order hybrid neural system could be written as:
 
 \[
-\dot{I}
-=
-\beta(t)\frac{SI}{N}
--
-\gamma I,
+\dot{x}(t)=f_{q(t)}\bigl(x(t),I(t),p(t),\theta\bigr),
 \]
+
+where \(x(t)\) includes neural, synaptic, network, cellular, behavioral, or physiological states; \(I(t)\) is stimulation or synaptic drive; \(p(t)\) represents intervention or protocol state; \(\theta\) contains biophysical or phenomenological parameters; and \(q(t)\) selects an active treatment, stimulation, behavioral, or experimental mode.
+
+Events might include:
+
+- Current-pulse onset, offset, amplitude change, or waveform change
+- Synaptic input, spike detection, or network event
+- State-dependent stimulation triggered by a measured neural or behavioral variable
+- Electrode, recording, or stimulation artifact events
+- Seizure-like threshold crossing, burst termination, or mode transition
+- Closed-loop neuromodulation action
+- Drug administration, concentration threshold, receptor-blockade change, or washout protocol
+- Trial onset, sensory stimulus transition, task phase, reinforcement signal, or behavioral action
+- A coupling event between a detailed neuronal simulator and a reduced external system
+
+At cellular and network levels, NEURON already treats several of these problems as first-class concerns. It supports variable-order and variable-step integration, event delivery, parallel networks, and detailed biophysical mechanisms. The existing sophistication has two implications for `hybrid-ds-julia`.
+
+First, the package should not make generic claims such as “NEURON cannot model events” or “hybrid event support is missing from neural simulators.” Such claims would be false or misleading. Event-driven synaptic mechanisms and network simulation are central to modern computational-neuroscience tools.
+
+Second, any proposed complementarity must identify a genuinely distinct use case. A plausible distinction is between an event internal to a detailed neural-network simulation and an event that changes the governing model at the system or experimental-policy level:
 
 \[
-\dot{R}
-=
-\gamma I.
+\text{neural dynamics}
+\longrightarrow
+\text{estimated biomarker}
+\longrightarrow
+\text{stimulation decision}
+\longrightarrow
+\text{changed stimulation protocol}
+\longrightarrow
+\text{future neural and behavioral dynamics}.
 \]
 
-Hybrid policy structure enters when the transmission rate, testing intensity, treatment availability, or intervention state changes. For example, a threshold-triggered intervention may reduce effective transmission when infections exceed a policy threshold:
+A model of this form might combine a low-dimensional neural state, a behavioral state, a measurement process, an estimator, and a thresholded controller. The hybrid framework would make a decision rule explicit:
 
 \[
-I(t)
-\geq
-I_{\mathrm{trigger}}
-\quad \Longrightarrow \quad
-\beta(t)
-=
-\beta_{\mathrm{restricted}}.
+\text{apply stimulation if }\hat{z}(t)\geq z_{\mathrm{threshold}},
 \]
 
-When cases fall below a reopening threshold,
+or:
 
 \[
-I(t)
-\leq
-I_{\mathrm{release}}
-\quad \Longrightarrow \quad
-\beta(t)
-=
-\beta_{\mathrm{baseline}}.
+\text{change mode if}
+\int_{t-T}^{t}\phi(x(s))\,ds
+\geq\Theta.
 \]
 
-Vaccination or prophylaxis campaigns can be represented by jump maps such as
+Such a model could be useful for studying assumptions in adaptive stimulation, experimental design, neuroprosthetic control, pharmacological intervention, or neural-behavioral coupling. It is not a substitute for detailed cellular simulation when morphology, spatial ion dynamics, dendritic integration, channel kinetics, or network connectivity are essential to the scientific question.
+
+Potential uses of `hybrid-ds-julia` in a NEURON-adjacent context include:
+
+- Reduced-order neural or neural-mass models coupled to discrete stimulation, recording, behavioral, or treatment events
+- Simulation of adaptive closed-loop stimulation policies with explicit safety thresholds, delays, measurement noise, and control constraints
+- Comparison of open-loop, scheduled, threshold-triggered, and estimator-based stimulation protocols
+- Sensitivity analysis for stimulation amplitude, timing, delay, measurement noise, state-estimator parameters, and intervention thresholds
+- Constrained optimization of stimulation schedules or control policies in low-dimensional surrogate models
+- Neural-behavioral or neural-pharmacological systems in which external subsystems are naturally represented by ODEs and discrete events
+- Experimental-design simulation that compares which stimulation or measurement schedules distinguish competing hypotheses
+- Development of reduced-order surrogates for use when a full multicompartment network simulation would be too costly inside a policy-optimization loop
+
+The numerical requirements are demanding. State-triggered events can cause discontinuities in parameters, inputs, modes, or states. When estimating gradients or sensitivities, a correct method must include the dependence of event timing on parameters and state, not merely differentiate the smooth intervals between events. If an external decision rule depends on a threshold crossing, then both threshold-crossing time and state transition must be handled consistently.
+
+A possible future interoperability direction would be deliberately modest: use detailed NEURON simulations to generate data or reduced-order surrogates, then use `hybrid-ds-julia` for system-level policy exploration; or use a reduced-order external model to determine stimulation or intervention protocols subsequently evaluated in NEURON. Direct co-simulation would require explicit agreement about time stepping, event ordering, state transfer, units, reproducibility, and numerical error control. It should not be claimed until demonstrated on a concrete benchmark.
+
+Questions for Dr. Hines and the NEURON community include:
+
+1. What system-level hybrid problems are not already adequately handled by NEURON, CoreNEURON, Python control scripts, or existing co-simulation workflows?
+2. Would a Julia-native reduced-order ODE-and-event environment be useful for adaptive stimulation, neural-behavioral coupling, pharmacological protocols, or multiscale policy modeling?
+3. What would a scientifically meaningful NEURON-adjacent benchmark look like?
+4. Which event semantics, solver guarantees, sensitivity methods, and numerical diagnostics would be necessary before using such a workflow for neural applications?
+5. Is one-way model exchange, surrogate fitting, protocol export, or direct co-simulation the most realistic interoperability target?
+6. Which capabilities should remain explicitly outside project scope because NEURON and related neuroscience ecosystems already address them more effectively?
+
+The most credible position is one of complementarity. `hybrid-ds-julia` may become useful for transparent low-dimensional systems models and event-aware intervention policies that sit around, above, or alongside detailed neural simulation. It should not present itself as an alternative implementation of NEURON's core scientific and computational mission.
+
+## Domains where `hybrid-ds-julia` would be less helpful
+
+### Why these settings are difficult
+
+Hybrid dynamical systems become difficult to use responsibly when recorded events do not identify the continuous state that is meant to drive the model.
+
+A dataset may record appointments, prescriptions, diagnostic codes, symptom questionnaires, hospitalizations, medication changes, and changes in function. These observations can establish that a person’s symptoms or care pathway changed. They may not establish whether the dominant driver was one disease-specific biological process, multiple interacting processes, a co-occurring condition, medication effects, behavior, environmental exposures, changing access to care, or a combination of these factors.
+
+In such settings, a model can often represent observable parts of the chain:
+
+- Timing of documented clinical events
+- Medication and treatment exposure
+- Healthcare utilization
+- Symptom and functional-status documentation
+- Selected physiological measurements
+- Monitoring and care-pathway decisions
+
+The difficult step is causal identification: determining which latent continuous state generated the observations, how that state changes over time, and whether an intervention caused a subsequent change. A model may fit observed trajectories while assigning them to the wrong mechanism.
+
+More formally, if \(y(t)\) is an observed symptom or function score, it may depend on several partially unobserved processes:
 
 \[
-S(t_k^+)
-=
-S(t_k^-)
--
-V_k,
+y(t)=f_1(x_1(t))+f_2(x_2(t))+\cdots+f_k(x_k(t))+\epsilon(t).
 \]
 
-\[
-R(t_k^+)
-=
-R(t_k^-)
-+
-V_k,
-\]
+When the relevant \(x_i(t)\) are poorly measured, nonunique, or causally confounded, fitting a model to \(y(t)\) does not establish which process is responsible. This is a limitation of measurement and causal identifiability, not a judgment about the legitimacy or severity of any illness.
 
-where \(V_k\) is the number or proportion effectively vaccinated at the event time.
+### Some infectious and post-infectious conditions
 
-More detailed models can include exposed, hospitalized, intensive-care, treated, isolated, or age-stratified compartments. They can also represent delayed test results, treatment eligibility rules, limited hospital capacity, supply constraints, and region-specific intervention policies.
+Infection itself is not a limitation. Tuberculosis and HIV, for example, can be suitable applications when pathogen burden, drug exposure, treatment schedules, resistance, and relevant biomarkers are sufficiently defined and measured.
 
-Potential uses of `hybrid-ds-julia` include:
+Challenges arise in some infectious and post-infectious settings when persistent symptoms have multiple possible contributors and available observations do not identify the biological process that should form the model’s continuous state. In these settings, event history may be useful for descriptive or care-pathway analysis but insufficient for disease-specific mechanistic inference.
 
-- comparing fixed-calendar and threshold-triggered nonpharmaceutical interventions,
-- optimizing the timing of vaccination, testing, treatment, or prophylaxis campaigns,
-- studying hysteresis in policy rules, such as distinct intervention and reopening thresholds,
-- quantifying sensitivity of epidemic outcomes to trigger thresholds, reporting delays, and intervention timing,
-- evaluating robustness of adaptive policies across uncertainty in transmission, behavior, and adherence,
-- and representing inequities in access to testing, treatment, vaccination, or timely intervention as explicit differences in event timing and policy structure.
+#### Long COVID
 
-This application area is especially well suited to hybrid sensitivity analysis because policy conclusions can depend sharply on when a threshold is crossed. Small changes in transmission, surveillance delay, intervention timing, or available capacity may change whether a region experiences a short outbreak, repeated intervention cycles, or sustained healthcare-system stress. Event-aware derivatives and multiple shooting can help distinguish genuine policy-regime boundaries from numerical artifacts.
+Long COVID can involve discrete, timestamped events such as acute infection, reinfection, hospitalization, medication changes, diagnostic testing, rehabilitation, work-disability transitions, and follow-up visits. These events can support carefully scoped monitoring, care-pathway, utilization, or organ-specific models.
+
+The central difficulty is that long COVID is heterogeneous, its mechanisms remain incompletely resolved, and routine laboratory results do not reliably distinguish it from other illnesses. Persistent symptoms may reflect multiple possible and potentially interacting processes, including immune dysregulation, tissue injury, altered autonomic function, post-intensive-care effects, concurrent conditions, medication effects, and contextual factors.
+
+`hybrid-ds-julia` may be useful for explicitly limited questions, such as rehabilitation scheduling, monitoring policies, longitudinal function tracking, or a well-defined organ-specific complication. It should not be presented as a validated model that identifies a single cause of an individual’s persistent symptoms or selects individualized treatment on that basis.
+
+#### Persistent symptoms following Lyme disease treatment
+
+Lyme disease can be a suitable target for carefully scoped models of tick exposure, early infection, antimicrobial PK/PD, treatment scheduling, and objectively documented manifestations such as arthritis, neurologic disease, or carditis.
+
+Persistent nonspecific symptoms following appropriate treatment are a more difficult modeling target. Fatigue, pain, cognitive complaints, and reduced function may have several possible contributors, including reinfection, delayed or incomplete diagnosis, immune or tissue effects, co-occurring illness, sleep disturbance, medication effects, other infections, and causes unrelated to active *Borrelia* infection.
+
+A model may represent treatment timing, diagnostic testing, antibiotic exposure, symptom documentation, and follow-up care. Those events alone do not establish whether a persistent symptom trajectory represents ongoing infection, treatment failure, a post-infectious process, or another contributor. Models in this setting should remain carefully scoped and should not be used to infer an individual’s unmeasured mechanism or justify individualized treatment without strong external validation.
+
+### ME/CFS
+
+Myalgic encephalomyelitis/chronic fatigue syndrome (ME/CFS) is a particularly clear example of a setting in which clinically meaningful events can be recorded without providing an identified disease-specific continuous state.
+
+Potentially modelable observations include symptom and function tracking, healthcare encounters, medication events, orthostatic measurements where available, activity and rest records, work or school participation, and patient-reported post-exertional symptom worsening. Such information may support descriptive longitudinal analysis, monitoring workflows, and explicitly limited care-pathway questions.
+
+The central challenge is that there is no confirmatory diagnostic test or validated biomarker that identifies ME/CFS as a single measurable biological state. Fatigue, post-exertional symptom worsening, pain, sleep disturbance, cognitive difficulty, autonomic symptoms, and functional limitation can coexist with other conditions or be influenced by multiple processes. Alternative explanations, comorbidities, medication effects, sleep disorders, activity patterns, and time-varying illness severity can confound relationships between recorded interventions and subsequent outcomes.
+
+For example, a treatment change may occur because a person was already worsening. An observational model could then associate the treatment with worse later symptoms even when worsening, rather than treatment, caused both the intervention and the later outcome.
+
+`hybrid-ds-julia` should therefore not be framed as identifying an individual’s ME/CFS mechanism or selecting treatment from sparse symptom and event records. It may still support descriptive symptom/function trajectories, monitoring systems, care-delivery operations, and sensitivity analyses that make competing assumptions explicit.
+
+### Mental health and complex behavioral care
+
+Mental health, substance use, and other forms of complex behavioral care can contain rich event histories: medication changes, therapy sessions, emergency visits, admissions, discharges, symptom-scale measurements, relapse episodes, substance-use treatment events, housing changes, employment changes, and social-service interventions.
+
+These events can support operational models of access, scheduling, continuity of care, monitoring, crisis response, capacity planning, and service delivery. Validated symptom scales may also support carefully defined descriptive or predictive tasks.
+
+However, mechanistic individual-level disease models can be difficult because symptoms and outcomes depend on many interacting, time-varying influences. These can include social and economic conditions, therapeutic relationship, trauma exposure, family and community support, concurrent physical illness, substance use, medication adherence, treatment availability, clinician selection, and patient preferences.
+
+Treatment-selection confounding is especially important. A medication change, hospitalization, or intensive intervention often occurs because symptoms, risk, or social circumstances were already worsening. A model trained only on observational event histories can mistake this association for a causal treatment effect.
+
+In these settings, `hybrid-ds-julia` may be useful for care-pathway simulation, resource planning, monitoring workflows, and sensitivity analysis. It should not be assumed to recover a single latent disease mechanism from routine records or to make unvalidated individualized treatment recommendations.
+
+### What remains appropriate in difficult settings
+
+A setting being less suitable for a mechanistic hybrid model does not make it unsuitable for all modeling. In the difficult domains above, `hybrid-ds-julia` may still be useful when the model’s purpose and limitations are explicit.
+
+Appropriate uses may include:
+
+- Descriptive models of symptom, function, or care trajectories
+- Monitoring and measurement workflows
+- Simulation of care pathways, referral rules, service capacity, and follow-up schedules
+- Cohort-level hypothesis generation
+- Sensitivity analyses across multiple explicitly stated causal assumptions
+- Analyses of missingness, delay, monitoring frequency, and measurement uncertainty
+- Operational studies that do not claim to identify disease-specific biology
+- Educational simulations that distinguish observed events from hypothesized latent mechanisms
+
+Such models should state clearly which states are directly measured, which are inferred, which assumptions are uncertain, and which decisions the model is not validated to support. They should not be used as a substitute for diagnosis, clinical judgment, informed consent, or external validation in the population and setting where they would be applied.
 
 ## Example applications
 
@@ -1975,103 +3933,354 @@ The immediate objective is to demonstrate a complete and credible workflow, not 
 
 ## Further reading
 
-This list is intended as a starting point rather than a comprehensive bibliography. It includes foundational hybrid-systems references, QSP and PK/PD context, sensitivity and automatic-differentiation methods, AI-enabled mechanistic modeling, and application areas relevant to the package.
+This section is organized to mirror the mathematical, computational, application, and limitation sections of this README. It is intentionally a curated starting point rather than a comprehensive bibliography. Readers should consult original papers, authoritative guidelines, maintained software documentation, and domain experts before relying on a model for scientific, engineering, clinical, or operational decisions.
 
-### Related hybrid-systems papers in other domains
+### Hybrid-systems foundations, events, and sensitivity analysis
 
-- Carver, S., Guckenheimer, J., & Cowan, N. J. (2009). *Lateral Stability of the Spring-Mass Hopper Suggests a Two Step Control Strategy for *. Chaos. A preprint is available through [the LIMBS website](https://limbs.lcsr.jhu.edu/wp-content/papercite-data/pdf/carverlateral2009.pdf). This paper is relevant because it uses hybrid-system computations in which accurate event handling, boundary-value methods, and structured sensitivity propagation are essential.
-- di Bernardo, M., Budd, C. J., Champneys, A. R., & Kowalczyk, P. (2008). *Piecewise-smooth Dynamical Systems: Theory and Applications*. Springer. A broad introduction to discontinuity-induced bifurcations, switching systems, and piecewise-smooth dynamics.
-- Goebel, R., Sanfelice, R. G., & Teel, A. R. (2012). *Hybrid Dynamical Systems: Modeling, Stability, and Robustness*. Princeton University Press. A foundational treatment of hybrid-system modeling and analysis.
-- van der Schaft, A. J., & Schumacher, H. (2000). *An Introduction to Hybrid Dynamical Systems*. Springer. A useful reference for systems that combine continuous dynamics and discrete transitions.
+#### Hybrid transitions, saltation matrices, and event-aware derivatives
 
-### Core dynamical systems / hybrid methods
+- Goebel, R., Sanfelice, R. G., and Teel, A. R. (2012). *Hybrid Dynamical Systems: Modeling, Stability, and Robustness*. Princeton University Press.
 
-- Guckenheimer, J., & Holmes, P. (1983). *Nonlinear Oscillations, Dynamical Systems, and Bifurcations of Vector Fields*. Springer. Foundational material on dynamical systems, periodic orbits, bifurcations, and stability.
-- Kuznetsov, Y. A. (2004). *Elements of Applied Bifurcation Theory* (3rd ed.). Springer. A standard reference for local bifurcations and continuation-oriented analysis.
-- Leine, R. I., & Nijmeijer, H. (2013). *Dynamics and Bifurcations of Non-Smooth Mechanical Systems*. Springer. Relevant to piecewise-smooth systems, impacts, switching, and discontinuity-induced bifurcations.
-- Nordmark, A. B. (1991). Non-periodic motion caused by grazing incidence in an impact oscillator. *Journal of Sound and Vibration*, 145(2), 279–297. A classic treatment of grazing events and their dynamical consequences.
-- Filippov, A. F. (1988). *Differential Equations with Discontinuous Righthand Sides*. Springer. A foundational source for differential equations with discontinuous vector fields and sliding dynamics.
+- di Bernardo, M., Budd, C. J., Champneys, A. R., and Kowalczyk, P. (2008). *Piecewise-Smooth Dynamical Systems: Theory and Applications*. Springer.
 
-### QSP / PK–PD concepts and practice
+- Kong, N. J., Payne, J. J., Zhu, J., and Johnson, A. M. (2024). Saltation matrices: The essential tool for linearizing hybrid dynamical systems. *Proceedings of the IEEE*, 112(2), 161–196.
 
-- van der Graaf, P. H., & Benson, N. (2011). Systems pharmacology: Bridging systems biology and pharmacokinetics-pharmacodynamics (PKPD) in drug discovery and development. *Pharmaceutical Research*, 28, 1460–1464. A concise early statement of the systems-pharmacology perspective.
-- Peterson, M. C., & Riggs, M. M. (2015). A physiologically based pharmacokinetic model of a monoclonal antibody against interleukin 6 in mice: A platform for translational model-based drug development. *Drug Metabolism and Disposition*, 43(8), 1143–1154. An example of mechanistic modeling in translational pharmacology.
-- Agoram, B. M., Martin, S. W., & van der Graaf, P. H. (2007). The role of mechanism-based pharmacokinetic-pharmacodynamic models in translational research. *CPT: Pharmacometrics & Systems Pharmacology* and related systems-pharmacology literature. Useful background on mechanism-based translational modeling.
-- Sorger, P. K., Allerheiligen, S. R. B., Abernethy, D. R., Altman, R. B., Brouwer, K. L. R., Califano, A., D’Argenio, D. Z., Iyengar, R., Jusko, W. J., Lalonde, R., et al. (2011). *Quantitative and Systems Pharmacology in the Post-genomic Era: New Approaches to Discovering Drugs and Understanding Therapeutic Mechanisms*. NIH White Paper. A major framing document for QSP.
-- van der Graaf, P. H., Benson, N., & related authors. QSP and model-informed drug development literature. QSP provides a framework for mechanistic models that combine drug exposure, biological pathways, disease state, and quantitative data to support in silico experiments and translational decisions. [QSP overview](https://www.mathworks.com/discovery/quantitative-systems-pharmacology.html)
+- Saccon, A., van de Wouw, N., and Nijmeijer, H. (2014). Sensitivity analysis of hybrid systems with state jumps with application to trajectory tracking. *Proceedings of the IEEE Conference on Decision and Control*.
 
-### Sensitivity, adjoint, and automatic differentiation
+- Galvanetto, U., and Magri, L. (2020). Modeling and sensitivity analysis methodology for hybrid dynamical systems. *Journal of Computational and Nonlinear Dynamics*, 15(2).
 
-- Rackauckas, C., Ma, Y., Dixit, V., Guo, X., Innes, M., Revels, J., Nyberg, J., & Ivaturi, V. (2020). Universal differential equations for scientific machine learning. *arXiv:2001.04385*. Relevant to combining mechanistic differential equations, machine learning, and differentiable simulation.
-- Rackauckas, C., & Nie, Q. (2017). DifferentialEquations.jl – A performant and feature-rich ecosystem for solving differential equations in Julia. *Journal of Open Research Software*, 5(1), 15. Background on the Julia differential-equation ecosystem on which `hybrid-ds-julia` is intended to build.
-- Rackauckas, C., et al. (2019). DiffEqFlux.jl — A Julia library for neural differential equations. *arXiv:1902.02376*. Relevant to differentiable simulation and scientific machine learning in Julia.
-- Cao, Y., Li, S., Petzold, L., & Serban, R. (2003). Adjoint sensitivity analysis for differential-algebraic equations: The adjoint DAE system and its numerical solution. *SIAM Journal on Scientific Computing*, 24(3), 1076–1089. Relevant background for gradient-based estimation and optimization.
-- Walther, A., & Griewank, A. (2012). *Getting Started with ADOL-C*. In *Combinatorial Scientific Computing*. Chapman and Hall/CRC. A useful introduction to automatic differentiation concepts and implementation.
+#### Multiple shooting, optimization, and parallel simulation
 
-### Mechanistic stochastic and Bayesian methods
+- Bock, H. G., and Plitt, K. J. (1984). A multiple shooting algorithm for direct solution of optimal control problems. *Proceedings of the IFAC World Congress*.
 
-- Wilkinson, D. J. (2011). *Stochastic Modelling for Systems Biology* (2nd ed.). Chapman and Hall/CRC. A broad introduction to stochastic models for biological systems.
-- Gillespie, D. T. (1977). Exact stochastic simulation of coupled chemical reactions. *The Journal of Physical Chemistry*, 81(25), 2340–2361. The classic stochastic simulation algorithm for reaction systems.
-- Allen, L. J. S. (2017). *A Primer on Stochastic Epidemics*. Springer. A useful introduction to stochastic epidemic modeling and uncertainty in compartmental systems.
-- Gelman, A., Carlin, J. B., Stern, H. S., Dunson, D. B., Vehtari, A., & Rubin, D. B. (2013). *Bayesian Data Analysis* (3rd ed.). CRC Press. General Bayesian methodology relevant to parameter inference and uncertainty quantification.
-- Carpenter, B., Gelman, A., Hoffman, M. D., Lee, D., Goodrich, B., Betancourt, M., Brubaker, M., Guo, J., Li, P., & Riddell, A. (2017). Stan: A probabilistic programming language. *Journal of Statistical Software*, 76(1), 1–32. Relevant to Bayesian inference workflows and gradient-based posterior computation.
+- Diehl, M., Bock, H. G., Diedam, H., and Wieber, P.-B. (2006). Fast direct multiple shooting algorithms for optimal robot control. In *Fast Motions in Biomechanics and Robotics*.
 
-### Mechanistic--neural hybrid systems
+- Betts, J. T. (2010). *Practical Methods for Optimal Control and Estimation Using Nonlinear Programming* (2nd ed.). SIAM.
 
-- Mann, J., et al. (2024). Mechanism-based organization of neural networks to emulate biological and pharmacological processes. This work is relevant because it reorganizes neural-network layers to reflect biological and pharmacological process structure rather than treating the model as an unconstrained black box. [Article](https://pmc.ncbi.nlm.nih.gov/articles/PMC11130269/)
-- Moutik, M., et al. Review of hybrid quantitative systems pharmacology and machine-learning approaches. See also [AI/ML mathematical extensions](#aiml-mathematical-extensions), especially [Mechanistic--neural hybrid systems](#mechanistic--neural-hybrid-systems). This literature is relevant to combining structured mechanistic models with learned components while preserving interpretation of pharmacological and biological state variables.
-- Fochesato, A., et al. (2025). Building hybrid pharmacometric–machine-learning models in practice. This tutorial reviews hybrid pharmacometric and machine-learning model considerations, including reporting and validation issues. [Article](https://pmc.ncbi.nlm.nih.gov/articles/PMC12823305/)
-- Coupling quantitative systems pharmacology modelling to machine learning. *Frontiers in Systems Biology* (2024). Discusses how QSP and ML can be combined, including biology-informed neural-network approaches. [Article](https://www.frontiersin.org/journals/systems-biology/articles/10.3389/fsysb.2024.1380685/full)
-- Pinto, A., Ramos, et al. A general hybrid modeling framework for systems biology. Relevant to combining mechanistic models and deep neural networks while retaining structured biological representations.
+- Rackauckas, C., and Nie, Q. (2017). DifferentialEquations.jl—A performant and feature-rich ecosystem for solving differential equations in Julia. *Journal of Open Research Software*, 5(1), 15.
 
-Further work enabled by `hybrid-ds-julia` would be to combine these mechanistic–neural architectures with explicit event surfaces, dose maps, toxicity holds, and therapy-switch transitions. This would allow learned model-discrepancy terms to improve prediction while preserving known treatment and biological logic.
+- Rackauckas, C., Ma, Y., Dixit, V., et al. (2020). Universal differential equations for scientific machine learning. *arXiv:2001.04385*.
 
-### Physics-informed neural networks
+- SciML. SciMLSensitivity.jl documentation: sensitivity algorithms for differential equations, including hybrid equations with events and callbacks. Consult the versioned documentation matching the installed package.
 
-- Raissi, M., Perdikaris, P., & Karniadakis, G. E. (2019). Physics-informed neural networks: A deep learning framework for solving forward and inverse problems involving nonlinear partial differential equations. *Journal of Computational Physics*, 378, 686–707. The foundational PINN reference.
-- Karniadakis, G. E., Kevrekidis, I. G., Lu, L., Perdikaris, P., Wang, S., & Yang, L. (2021). Physics-informed machine learning. *Nature Reviews Physics*, 3, 422–440. A broad review of physics-informed machine learning.
-- Erdem, D., et al. (2024). Learning chemotherapy drug action via universal physics-informed neural networks. This work applies a physics-informed approach to QSP models to identify hidden drug-action terms from synthetic and in-vitro data. [Preprint](https://arxiv.org/html/2404.08019v1)
-- A current landscape of integrating QSP and machine learning. *CPT: Pharmacometrics & Systems Pharmacology* (2022). Discusses PINNs and biologically informed neural networks as methods for combining mechanistic ODE structure with data-driven learning in QSP. [Article](https://pmc.ncbi.nlm.nih.gov/articles/PMC8837505/)
-- Rackauckas, C., et al. (2020). Universal differential equations for scientific machine learning. *arXiv:2001.04385*. Relevant to using neural components inside structured differential-equation models.
+- SciML. DifferentialEquations.jl and SciMLBase ensemble-simulation documentation. Consult the versioned documentation matching the installed package.
 
-For `hybrid-ds-julia`, the important extension would be hybrid PINNs that enforce not only continuous ODE residuals but also scheduled-dose jump maps, state-triggered guard conditions, reset maps, and continuity or discontinuity constraints at event times. Such tools could support latent-state reconstruction and parameter estimation from sparse, irregular, event-rich longitudinal data.
+### Pharmaceutical development and translational medicine
 
-### Neural hybrid automata
+#### Tuberculosis and HIV
 
-- Goebel, R., Sanfelice, R. G., & Teel, A. R. (2012). *Hybrid Dynamical Systems: Modeling, Stability, and Robustness*. Princeton University Press. A foundation for explicit representations of modes, guards, and reset maps.
-- van der Schaft, A. J., & Schumacher, H. (2000). *An Introduction to Hybrid Dynamical Systems*. Springer. A foundational treatment of hybrid automata and continuous-discrete system structure.
-- Pinto, A., Ramos, et al. A general hybrid modeling framework for systems biology. Relevant to machine-learning components combined with structured biological dynamics and interoperable systems-biology representations.
-- Moutik, M., et al. Review of QSP and machine-learning integration. See also [AI/ML mathematical extensions](#aiml-mathematical-extensions). This literature is relevant to identifying where learned components can complement, rather than replace, explicit mechanistic structure.
-- di Bernardo, M., Budd, C. J., Champneys, A. R., & Kowalczyk, P. (2008). *Piecewise-smooth Dynamical Systems: Theory and Applications*. Springer. Relevant to switching boundaries, mode transitions, and regime-dependent dynamics.
+- Perelson, A. S., Neumann, A. U., Markowitz, M., Leonard, J. M., and Ho, D. D. (1996). HIV-1 dynamics in vivo: Virion clearance rate, infected cell life-span, and viral generation time. *Science*, 271(5255), 1582–1586.
 
-A neural-hybrid-automaton direction for `hybrid-ds-julia` would retain known clinical modes—such as active treatment, reduced dose, hold, recovery, and rescue therapy—while using data-driven components only where latent mode structure, mode-dependent dynamics, or transition conditions are genuinely uncertain.
+- Rong, L., and Perelson, A. S. (2009). Modeling HIV persistence, the latent reservoir, and viral blips. *Journal of Theoretical Biology*, 260(2), 308–331.
 
-### Neural jump SDEs
+- Hill, A. L., Rosenbloom, D. I. S., Fu, F., Nowak, M. A., and Siliciano, R. F. (2014). Predicting the outcomes of treatment to eradicate the latent reservoir for HIV-1. *Proceedings of the National Academy of Sciences*, 111(37), 13475–13480.
 
-- Jia, J., & Benson, A. R. (2019). Neural jump stochastic differential equations. *Advances in Neural Information Processing Systems*. [Paper](https://proceedings.neurips.cc/paper_files/paper/9177-neural-jump-stochastic-differential-equations.pdf)
-- Jia, J., & Benson, A. R. (2019). Neural jump stochastic differential equations. [arXiv:1905.10403](https://arxiv.org/abs/1905.10403). The paper introduces a data-driven framework that learns continuous latent dynamics together with discrete stochastic events.
-- Baili, et al. Neural jump SDE-related work. See also [AI/ML mathematical extensions](#ai/ml-mathematical-extensions), especially [Neural jump SDEs](#neural-jump-sdes). This reference should be used alongside the final verified bibliographic citation for the Baili paper before release.
-- Krystul, J. (2006). Stochastic differential equations on hybrid state spaces. Relevant background for jump diffusion and hybrid stochastic-system formulations.
-- Wilkinson, D. J. (2011). *Stochastic Modelling for Systems Biology* (2nd ed.). Chapman and Hall/CRC. Background for stochastic biological dynamics and simulation.
+- World Health Organization. Consolidated guidelines on the use of antiretroviral drugs for treating and preventing HIV infection. Consult the current edition and associated viral-load-monitoring guidance.
 
-Within `hybrid-ds-julia`, a neural-jump-SDE extension would distinguish known scheduled clinical interventions from uncertain or latent stochastic events. It could support uncertainty-aware virtual-patient simulations, models of treatment interruptions or adherence variation, and estimation of stochastic biological perturbations without obscuring the explicit treatment policy.
+- World Health Organization. Consolidated guidelines on tuberculosis: Module 4: Treatment. Consult the current edition and regimen-specific updates.
 
-### Epidemiology, adaptive intervention, and public-health policy
+- Shibata, M., et al. (2024). Pharmacokinetic–pharmacodynamic modeling of tuberculosis time-to-positivity and colony-forming-unit data to compare linezolid dosing regimens. *Antimicrobial Agents and Chemotherapy*.
 
-- Hethcote, H. W. (2000). The mathematics of infectious diseases. *SIAM Review*, 42(4), 599–653. A classic review of compartmental epidemic models and their mathematical analysis.
-- Brauer, F., Castillo-Chavez, C., & Feng, Z. (2019). *Mathematical Models in Epidemiology*. Springer. A broad reference for deterministic and stochastic epidemic modeling.
-- Funk, S., Salathé, M., & Jansen, V. A. A. (2010). Modelling the influence of human behaviour on the spread of infectious diseases: A review. *Journal of the Royal Society Interface*, 7(50), 1247–1256. Relevant to feedback between epidemic state, behavior, and intervention responses.
-- Ferguson, N. M., et al. (2020). Impact of non-pharmaceutical interventions (NPIs) to reduce COVID-19 mortality and healthcare demand. Imperial College COVID-19 Response Team Report 9. An example of intervention timing and policy structure affecting epidemic outcomes.
-- Kissler, S. M., Tedijanto, C., Goldstein, E., Grad, Y. H., & Lipsitch, M. (2020). Projecting the transmission dynamics of SARS-CoV-2 through the postpandemic period. *Science*, 368(6493), 860–868. Relevant to intervention cycles, seasonality, and long-term epidemic-policy dynamics.
+#### Oncology and adaptive cancer therapy
 
-These references motivate work in which `hybrid-ds-julia` represents threshold-triggered interventions, vaccination pulses, testing and treatment rules, capacity constraints, and hysteretic reopening policies directly inside epidemiological models. Event-aware sensitivities could help identify policy thresholds at which small changes in timing, reporting delay, or intervention strength produce qualitatively different epidemic trajectories.
+- Gatenby, R. A., Silva, A. S., Gillies, R. J., and Frieden, B. R. (2009). Adaptive therapy. *Cancer Research*, 69(11), 4894–4903.
 
-### Mechanistic crop models and trait optimization
+- Zhang, J., Cunningham, J. J., Brown, J. S., and Gatenby, R. A. (2017). Integrating evolutionary dynamics into treatment of metastatic castrate-resistant prostate cancer. *Nature Communications*, 8, 1816.
 
-- Thornley, J. H. M., & France, J. (2007). *Mathematical Models in Agriculture: Quantitative Methods for the Plant, Animal and Ecological Sciences* (2nd ed.). CABI. A broad resource for mechanistic agricultural models.
-- Yin, X., & Struik, P. C. (2010). Modelling the crop: From system dynamics to systems biology. *Journal of Experimental Botany*, 61(8), 2171–2183. Relevant to linking crop physiological models with systems-level analysis.
-- Hammer, G. L., Messina, C., van Oosterom, E., & Chapman, S. (2019). Crop design for adaptation to the drought and high-temperature risks anticipated in future climates. *Crop Science*, 59(5), 2093–2110. Relevant to trait-by-environment interactions and crop-design questions.
-- APSIM Initiative. APSIM: Agricultural Production Systems sIMulator. A widely used platform for crop, soil, and management simulation.
-- Jones, J. W., et al. (2003). The DSSAT cropping system model. *European Journal of Agronomy*, 18(3–4), 235–265. A foundational reference for crop-system simulation.
+- West, J. B., et al. (2020). A survey of open questions in adaptive therapy: Bridging mathematics and clinical translation. *eLife*, 9, e84263.
 
-These references provide context for using hybrid event-aware methods in crop growth, irrigation, fertilization, canopy competition, and trait-optimization problems where the timing of discrete management actions can be as important as the continuous biological dynamics.
+- Enriquez-Navas, P. M., et al. (2016). Exploiting evolutionary principles to prolong tumor control in preclinical models of breast cancer. *Science Translational Medicine*, 8(327), 327ra24.
+
+- Anderson, A. R. A., Quaranta, V., and collaborators. Mathematical oncology reviews and primary studies on tumor ecology, resistance, and treatment scheduling. Consult indication-specific literature.
+
+#### Immunology, inflammation, and autoimmune disease
+
+- Eftimie, R., Bramson, J. L., and Earn, D. J. D. (2011). Interactions between the immune system and cancer: A brief review of non-spatial mathematical models. *Bulletin of Mathematical Biology*, 73, 2–32.
+
+- Iwami, S., Takeuchi, Y., and others. Mathematical models of autoimmune-disease dynamics, tolerance, flare-up, and dormancy. Consult disease-specific primary literature.
+
+- Kuhlmann, T., et al. (2024). Mathematical modeling in autoimmune diseases: A review of onset, progression, and treatment-effect models. *Frontiers in Immunology*.
+
+- Germain, R. N. (2012). Maintaining system homeostasis: The third law of Newtonian immunology. *Nature Immunology*, 13, 902–906.
+
+- Consult disease-specific guidance, mechanistic studies, and pharmacometric literature for the intended autoimmune or inflammatory indication.
+
+#### PK/PD and quantitative systems pharmacology
+
+- Mager, D. E., and Jusko, W. J. (2001). General pharmacokinetic model for drugs exhibiting target-mediated drug disposition. *Journal of Pharmacokinetics and Pharmacodynamics*, 28, 507–532.
+
+- Danhof, M., de Jongh, J., De Lange, E. C. M., Della Pasqua, O., Ploeger, B. A., and Voskuyl, R. A. (2007). Mechanism-based pharmacokinetic-pharmacodynamic modeling: Biophase distribution, receptor theory, and dynamical systems analysis. *Annual Review of Pharmacology and Toxicology*, 47, 357–400.
+
+- Marshall, S. F., Burghaus, R., Cosson, V. F., et al. (2016). Good practices in model-informed drug discovery and development: Practice, application, and documentation. *CPT: Pharmacometrics & Systems Pharmacology*, 5, 93–122.
+
+- Sorger, P. K., et al. (2011). Quantitative and systems pharmacology in the post-genomic era: New approaches to discovering drugs and understanding therapeutic mechanisms. *NIH White Paper*.
+
+- U.S. Food and Drug Administration. Model-informed drug development and population pharmacokinetic guidance and related regulatory materials. Consult current guidance.
+
+### Clinical operations and treatment delivery
+
+#### Dose scheduling, adherence, and therapeutic monitoring
+
+- Sheiner, L. B., and Steimer, J.-L. (2000). Pharmacokinetic/pharmacodynamic modeling in drug development. *Annual Review of Pharmacology and Toxicology*, 40, 67–95.
+
+- Mould, D. R., and Upton, R. N. (2012). Basic concepts in population modeling, simulation, and model-based drug development. *CPT: Pharmacometrics & Systems Pharmacology*, 1, e6.
+
+- Kang, J. S., and Lee, M. H. (2009). Overview of therapeutic drug monitoring. *The Korean Journal of Internal Medicine*, 24(1), 1–10.
+
+- Nieuwlaat, R., et al. (2014). Interventions for enhancing medication adherence. *Cochrane Database of Systematic Reviews*.
+
+#### Hospital, critical care, and digital health
+
+- Clermont, G., Angus, D. C., DiRusso, S. M., Griffin, M., and Linde-Zwirble, W. T. (2004). Predicting hospital mortality for patients in the intensive care unit: A comparison of artificial neural networks with logistic regression models. *Critical Care Medicine*, 29, 291–296.
+
+- Heldt, T., et al. Physiological modeling, monitoring, and control literature for intensive-care and clinical decision-support systems. Consult condition-specific literature.
+
+- Behar, J. A., et al. (2018). Remote health monitoring and wearable physiological sensing: Methods and applications. Consult current reviews and validation studies.
+
+- U.S. Food and Drug Administration. Clinical decision support software and software-as-a-medical-device guidance. Consult current guidance.
+
+### Biomanufacturing and industrial biotechnology
+
+#### Batch, fed-batch, and continuous bioprocesses
+
+- Nielsen, J., Villadsen, J., and Lidén, G. (2017). *Bioreaction Engineering Principles* (3rd ed.). Springer.
+
+- Villadsen, J., Nielsen, J., and Lidén, G. (2011). *Bioreaction Engineering Principles* (3rd ed.). Springer.
+
+- Banga, J. R., Balsa-Canto, E., Moles, C. G., and Alonso, A. A. (2003). Improving food processing using modern optimization methods. *Trends in Food Science & Technology*, 14, 131–144.
+
+- Smets, I. Y., et al. (2004). Optimal control of a fed-batch fermentation process. *Journal of Process Control*, 14, 379–386.
+
+- Tebbani, S., and colleagues. Optimal switching control of fed-batch fermentation processes. Consult primary literature for the intended organism and product.
+
+#### Quality control, maintenance, and process transitions
+
+- Isermann, R. (2006). *Fault-Diagnosis Systems: An Introduction from Fault Detection to Fault Tolerance*. Springer.
+
+- Jardine, A. K. S., Lin, D., and Banjevic, D. (2006). A review on machinery diagnostics and prognostics implementing condition-based maintenance. *Mechanical Systems and Signal Processing*, 20(7), 1483–1510.
+
+- Qin, S. J. (2012). Survey on data-driven industrial process monitoring and diagnosis. *Annual Reviews in Control*, 36(2), 220–234.
+
+### Energy systems and power grids
+
+#### Storage, demand response, faults, and restoration
+
+- Kundur, P. (1994). *Power System Stability and Control*. McGraw-Hill.
+
+- Sauer, P. W., and Pai, M. A. (1998). *Power System Dynamics and Stability*. Prentice Hall.
+
+- Hiskens, I. A., and Pai, M. A. (2000). Trajectory sensitivity analysis of hybrid systems. *IEEE Transactions on Circuits and Systems I*, 47(2), 204–220.
+
+- Milano, F. (2010). *Power System Modelling and Scripting*. Springer.
+
+- DIgSILENT GmbH. PowerFactory documentation. Consult current documentation for dynamic simulation, events, protection, and Modelica/FMI interoperability.
+
+- PSCAD, EMTP-RV, PSS®E, and related power-system simulation documentation. Consult the tool appropriate to the intended study.
+
+### Supply chains, logistics, and operations
+
+#### Inventory, routing, production, and maintenance
+
+- Simchi-Levi, D., Kaminsky, P., and Simchi-Levi, E. (2008). *Designing and Managing the Supply Chain* (3rd ed.). McGraw-Hill.
+
+- Bertazzi, L., and Speranza, M. G. (2012). Inventory routing problems: An introduction. *EURO Journal on Transportation and Logistics*, 1, 307–326.
+
+- Kleywegt, A. J., Nori, V. S., and Savelsbergh, M. W. P. (2002). The stochastic inventory routing problem with direct deliveries. *Transportation Science*, 36(1), 94–118.
+
+- Pinedo, M. (2022). *Scheduling: Theory, Algorithms, and Systems* (6th ed.). Springer.
+
+- Dekker, R. (1996). Applications of maintenance optimization models: A review and analysis. *Reliability Engineering & System Safety*, 51(3), 229–240.
+
+### Ecosystems, agriculture, and environmental management
+
+#### Crop growth, irrigation, and pest management
+
+- Jones, J. W., et al. (2003). The DSSAT cropping system model. *European Journal of Agronomy*, 18, 235–265.
+
+- Holzworth, D. P., et al. (2014). APSIM—Evolution towards a new generation of agricultural systems simulation. *Environmental Modelling & Software*, 62, 327–350.
+
+- Steduto, P., Hsiao, T. C., Raes, D., and Fereres, E. (2009). *AquaCrop—The FAO Crop Model to Simulate Yield Response to Water*. FAO.
+
+- Chaves, M. M., et al. (2010). Deficit irrigation and partial root zone drying: A review. *Journal of Experimental Botany*, 61(7), 1965–1975.
+
+- Consult integrated pest-management, crop-model, hydrology, and agricultural-extension literature for the intended crop, region, and intervention.
+
+#### Fisheries, wildlife, and invasive-species control
+
+- Clark, C. W. (2010). *Mathematical Bioeconomics: The Mathematics of Conservation* (3rd ed.). Wiley.
+
+- Hilborn, R., and Walters, C. J. (1992). *Quantitative Fisheries Stock Assessment*. Chapman and Hall.
+
+- Lenhart, S., and Workman, J. T. (2007). *Optimal Control Applied to Biological Models*. Chapman and Hall/CRC.
+
+- Impulsive differential-equation and seasonal-harvest literature for fishery, wildlife, and invasive-species management. Consult species-specific primary research.
+
+#### Water, land, and climate-adaptation systems
+
+- Loucks, D. P., and van Beek, E. (2017). *Water Resource Systems Planning and Management* (2nd ed.). Springer.
+
+- Yeh, W. W.-G. (1985). Reservoir management and operations models: A state-of-the-art review. *Water Resources Research*, 21(12), 1797–1818.
+
+- IPCC. Assessment Reports and Working Group reports on impacts, adaptation, and vulnerability. Consult the current assessment cycle.
+
+- Consult region-specific hydrologic, groundwater, flood-risk, and climate-adaptation literature for operational applications.
+
+### Infrastructure, robotics, and engineered systems
+
+#### Buildings, HVAC, and thermal management
+
+- Wetter, M. (2011). Co-simulation of building energy and control systems with the Building Controls Virtual Test Bed. *Journal of Building Performance Simulation*, 4(3), 185–203.
+
+- Aswani, A., Master, N., Taneja, J., Krioukov, A., Culler, D., and Tomlin, C. (2012). Energy-efficient building HVAC control using hybrid system LBMPC. *arXiv:1204.4717*.
+
+- Afram, A., and Janabi-Sharifi, F. (2014). Theory and applications of HVAC control systems—A review of model predictive control. *Building and Environment*, 72, 343–355.
+
+- EnergyPlus documentation and Modelica Buildings Library documentation. Consult current versions for detailed building-energy simulation.
+
+#### Transportation and autonomous systems
+
+- Rajamani, R. (2012). *Vehicle Dynamics and Control* (2nd ed.). Springer.
+
+- Paden, B., Čáp, M., Yong, S. Z., Yershov, D., and Frazzoli, E. (2016). A survey of motion planning and control techniques for self-driving urban vehicles. *IEEE Transactions on Intelligent Vehicles*, 1(1), 33–55.
+
+- Althoff, M., and Dolan, J. M. (2014). Online verification of automated road vehicles using reachability analysis. *IEEE Transactions on Robotics*, 30(4), 903–918.
+
+- Consult current formal-verification, simulation, traffic-control, and vehicle-platform literature for the intended application.
+
+#### Robotics, contact mechanics, and fault management
+
+- Henzinger, T. A. (1996). The theory of hybrid automata. In *Proceedings of the 11th Annual IEEE Symposium on Logic in Computer Science*.
+
+- Tedrake, R. (2023). *Underactuated Robotics: Algorithms for Walking, Running, Swimming, Flying, and Manipulation*. Online textbook and course notes.
+
+- Manchester, I. R., and Slotine, J.-J. E. (2017). Control contraction metrics: Convex and intrinsic criteria for nonlinear feedback design. *IEEE Transactions on Automatic Control*, 62(6), 3046–3053.
+
+- Drake documentation. Consult current documentation for `MultibodyPlant`, joints, actuators, force elements, springs, compliant contact, hydroelastic contact, and contact-model choices.
+
+- Isermann, R. (2006). *Fault-Diagnosis Systems: An Introduction from Fault Detection to Fault Tolerance*. Springer.
+
+#### Postural control, locomotion, and sensorimotor behavior
+
+- Grizzle, J. W., Abba, G., and Plestan, F. (2001). Asymptotically stable walking for biped robots: Analysis via systems with impulse effects. *IEEE Transactions on Automatic Control*, 46(1), 51–64.
+
+- Westervelt, E. R., Grizzle, J. W., Chevallereau, C., Choi, J. H., and Morris, B. (2007). *Feedback Control of Dynamic Bipedal Robot Locomotion*. CRC Press.
+
+- Burden, S. A., Revzen, S., and Sastry, S. S. (2015). Model reduction near periodic orbits of hybrid dynamical systems. *IEEE Transactions on Automatic Control*, 60(10), 2626–2639.
+
+- Blickhan, R. (1989). The spring-mass model for running and hopping. *Journal of Biomechanics*, 22(11–12), 1217–1227.
+
+- Holmes, P., Full, R. J., Koditschek, D., and Guckenheimer, J. (2006). The dynamics of legged locomotion: Models, analyses, and challenges. *SIAM Review*, 48(2), 207–304.
+
+### Specific labs and authors
+
+#### Jeka and Kiemel: postural control, multisensory integration, and locomotion
+
+- Jeka, J. J., Kiemel, T., Creath, R., Horak, F., and Peterka, R. J. (2004). Controlling human upright posture: Velocity information is more accurate than position or acceleration. *Journal of Neurophysiology*, 92(4), 2368–2379.
+
+- Kiemel, T., Oie, K. S., and Jeka, J. J. (2002). Multisensory fusion and the stochastic structure of postural sway. *Biological Cybernetics*, 87, 262–277.
+
+- Creath, R., Kiemel, T., Horak, F., and Jeka, J. J. (2008). The role of vestibular and somatosensory systems in intersegmental dynamics during stance. *Experimental Brain Research*, 183, 509–517.
+
+- Hsu, W.-L., Scholz, J. P., Schöner, G., Jeka, J. J., and Kiemel, T. (2007). Control and estimation of posture during quiet stance depends on multijoint coordination. *Journal of Neurophysiology*, 97(4), 3024–3035.
+
+- Kiemel, T., Elahi, A. J., and Jeka, J. J. (2008). Identification of the plant for upright stance in humans: Multiple movement patterns from a single neural strategy. *Journal of Neurophysiology*, 100, 3394–3406.
+
+- Logan, D., Kiemel, T., and Jeka, J. J. (2016). Using a system identification approach to investigate subtask control during human locomotion. *Frontiers in Computational Neuroscience*, 10, 146.
+
+#### Ahrens Lab: zebrafish sensorimotor behavior and whole-brain dynamics
+
+- Ahrens, M. B., Li, J. M., Orger, M. B., Robson, D. N., Schier, A. F., Engert, F., and Portugues, R. (2012). Brain-wide neuronal dynamics during motor adaptation in zebrafish. *Nature*, 485, 471–477.
+
+- Chen, X., Mu, Y., Hu, Y., Kuan, A. T., Nikitchenko, M., Randlett, O., Chen, A. B., Gavornik, J. P., Sompolinsky, H., Engert, F., and Ahrens, M. B. (2018). Brain-wide organization of neuronal activity and convergent sensorimotor transformations in larval zebrafish. *Neuron*, 100, 876–890.e5.
+
+- Mu, Y., Bennett, D. V., Rubinov, M., Narayan, S., Yang, C.-T., Tanimoto, M., Mensh, B. D., Looger, L. L., and Ahrens, M. B. (2019). Glia accumulate evidence that actions are futile and suppress unsuccessful behavior. *Cell*, 178, 27–43.e19.
+
+- Yang, E., Zwart, M. F., James, B., Rubinov, M., Wei, Z., Narayan, S., Vladimirov, N., Mensh, B. D., Fitzgerald, J. E., and Ahrens, M. B. (2022). A brainstem integrator for self-location memory and positional homeostasis in zebrafish. *Cell*, 185, 5011–5027.e20.
+
+- Ahrens Lab, HHMI Janelia Research Campus. Laboratory website, publications, and public datasets. Consult current laboratory materials.
+
+#### Cowan and the LIMBS Laboratory: mechanics, active sensing, and system identification
+
+- Cowan, N. J., and Fortune, E. S. (2007). The critical role of locomotion mechanics in decoding sensory systems. *Journal of Neuroscience*, 27(5), 1123–1128.
+
+- Sefati, S., Neveln, I. D., Roth, E., Mitchell, T. R. T., Snyder, J. B., MacIver, M. A., Fortune, E. S., and Cowan, N. J. (2013). Mutually opposing forces during locomotion can eliminate the tradeoff between maneuverability and stability. *Proceedings of the National Academy of Sciences*, 110(47), 18798–18803.
+
+- Cowan, N. J., Ankarali, M. M., Dyhr, J. P., Madhav, M. S., Roth, E., Sefati, S., Sponberg, S., Stamper, S. A., Fortune, E. S., and Daniel, T. L. (2014). Feedback control as a framework for understanding tradeoffs in biology. *Integrative and Comparative Biology*, 54(2), 223–237.
+
+- LIMBS Laboratory, Johns Hopkins University. Research materials and publication list. Consult current laboratory materials.
+
+#### Fortune: weakly electric fish, active sensing, and feedback control
+
+- Cowan, N. J., and Fortune, E. S. (2007). The critical role of locomotion mechanics in decoding sensory systems. *Journal of Neuroscience*, 27(5), 1123–1128.
+
+- Roth, E., Zhuang, K., Stamper, S. A., Fortune, E. S., and Cowan, N. J. (2011). Stimulus predictability mediates a switch in locomotor smooth-pursuit performance for *Eigenmannia virescens*. *Journal of Experimental Biology*, 214, 1170–1180.
+
+- Madhav, M. S., Stamper, S. A., Fortune, E. S., and Cowan, N. J. (2013). Closed-loop stabilization of the jamming avoidance response reveals its locally unstable and globally nonlinear dynamics. *Journal of Experimental Biology*, 216, 4272–4284.
+
+- Yang, Y., Yared, D. G., Fortune, E. S., and Cowan, N. J. (2024). Sensorimotor adaptation to destabilizing dynamics in weakly electric fish. *Current Biology*.
+
+- Fortune, E. S. and collaborators. Primary research on locomotion, active sensing, sensory feedback, and behavioral variability in weakly electric fish. Consult current publication lists.
+
+#### Hines and the NEURON ecosystem: neural and network simulation
+
+- Hines, M. L., and Carnevale, N. T. (1997). The NEURON simulation environment. *Neural Computation*, 9(6), 1179–1209.
+
+- Hines, M. L., and Carnevale, N. T. (2001). NEURON: A tool for neuroscientists. *The Neuroscientist*, 7(2), 123–135.
+
+- Hines, M. L., and Carnevale, N. T. (2004). Discrete event simulation in the NEURON environment. *Neurocomputing*, 58–60, 1117–1122.
+
+- Migliore, M., Cannia, C., Lytton, W. W., Markram, H., and Hines, M. L. (2006). Parallel network simulations with NEURON. *Journal of Computational Neuroscience*, 21, 119–129.
+
+- Hines, M. L., Davison, A. P., and Muller, E. (2009). NEURON and Python. *Frontiers in Neuroinformatics*, 3, 1.
+
+- Carnevale, N. T., and Hines, M. L. (2006). *The NEURON Book*. Cambridge University Press.
+
+- NEURON and CoreNEURON documentation; ModelDB. Consult current documentation and model repositories.
+
+### Domains where mechanistic hybrid modeling is more limited
+
+The following readings are included to support careful treatment of causal identification, diagnostic uncertainty, symptom heterogeneity, alternative explanations, comorbidity, treatment-selection confounding, and appropriate limits on individualized mechanistic inference.
+
+#### ME/CFS
+
+- National Academy of Medicine. (2015). *Beyond Myalgic Encephalomyelitis/Chronic Fatigue Syndrome: Redefining an Illness*. National Academies Press.
+
+- U.S. Centers for Disease Control and Prevention. ME/CFS clinical overview, diagnostic guidance, and diagnostic criteria. Consult current guidance.
+
+- National Institute for Health and Care Excellence. (2021). *Myalgic encephalomyelitis (or encephalopathy)/chronic fatigue syndrome: Diagnosis and management* (NG206).
+
+- Nacul, L., et al. (2020). How myalgic encephalomyelitis/chronic fatigue syndrome is diagnosed and managed in primary care. Consult current systematic reviews and guidance.
+
+#### Long COVID and persistent post-infectious symptoms
+
+- World Health Organization. A clinical case definition of post COVID-19 condition by a Delphi consensus. Consult current WHO materials.
+
+- U.S. Centers for Disease Control and Prevention. Long COVID clinical overview and clinical guidance. Consult current guidance.
+
+- RECOVER Initiative. Publications, cohort resources, and current evidence on post-acute sequelae of SARS-CoV-2 infection. Consult current materials.
+
+- Davis, H. E., McCorkell, L., Vogel, J. M., and Topol, E. J. (2023). Long COVID: Major findings, mechanisms, and recommendations. *Nature Reviews Microbiology*, 21, 133–146.
+
+- Thaweethai, T., et al. (2023). Development of a definition of postacute sequelae of SARS-CoV-2 infection. *JAMA*, 329(22), 1934–1946.
+
+#### Persistent symptoms following Lyme disease treatment
+
+- Lantos, P. M., Rumbaugh, J., Bockenstedt, L. K., et al. (2021). Clinical practice guidelines by the Infectious Diseases Society of America, American Academy of Neurology, and American College of Rheumatology: 2020 guidelines for the prevention, diagnosis, and treatment of Lyme disease. *Clinical Infectious Diseases*, 72(1), e1–e48.
+
+- U.S. Centers for Disease Control and Prevention. Lyme disease and prolonged symptoms following Lyme disease. Consult current guidance.
+
+- National Academies of Sciences, Engineering, and Medicine. (2025). *Charting a Path Toward New Treatments for Lyme Infection-Associated Chronic Illnesses*. National Academies Press.
+
+- Bobe, J. R., Jutras, B. L., Horn, E. J., et al. (2021). Recent progress in Lyme disease and remaining challenges. *Frontiers in Medicine*, 8, 666554.
+
+#### Mental health and complex behavioral care
+
+- Hernán, M. A., and Robins, J. M. (2020). *Causal Inference: What If*. Chapman and Hall/CRC.
+
+- Shadish, W. R., Cook, T. D., and Campbell, D. T. (2002). *Experimental and Quasi-Experimental Designs for Generalized Causal Inference*. Houghton Mifflin.
+
+- Greenland, S., Pearl, J., and Robins, J. M. (1999). Causal diagrams for epidemiologic research. *Epidemiology*, 10(1), 37–48.
+
+- National Institute of Mental Health. Research Domain Criteria and current research resources. Consult current materials.
+
+- Consult disorder-specific clinical guidelines, epidemiological studies, treatment-trial literature, and implementation-science research for the intended mental-health or behavioral-care application.
