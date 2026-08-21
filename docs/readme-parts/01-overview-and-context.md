@@ -185,33 +185,33 @@ The package should not be interpreted as a replacement for domain-specific simul
 
 A smooth ODE model has the form:
 
-\[
+$$
 \dot{x}(t)=f(x(t),t,\theta),
-\]
+$$
 
 where \(x(t)\) is a continuous state and \(\theta\) is a parameter vector.
 
 A hybrid model additionally has a discrete mode \(q(t)\), a time-varying input \(u(t)\), event conditions, and updates:
 
-\[
+$$
 \dot{x}(t)=f_{q(t)}(x(t),t,\theta,u(t)),
-\]
+$$
 
 where \(u(t)\) denotes an input that affects the system dynamics. Depending on the application, it may be an externally specified forcing signal, a scheduled intervention, or a control action. For example, \(u(t)\) may represent a drug infusion rate, dose schedule, environmental exposure, actuator command, or controller output. Later sections distinguish exogenous inputs, scheduled actions, and closed-loop actions selected by a policy.
 
 For event \(i\), the model specifies a guard:
 
-\[
+$$
 g_i(x(t),q(t),u(t),t,\theta)=0,
-\]
+$$
 
 and event updates such as:
 
-\[
+$$
 x^+=R_i(x^-,q^-,u^-,t,\theta),
 \qquad
 q^+=T_i(q^-,x^-,u^-,t,\theta).
-\]
+$$
 
 The dependence on \(q^-\), \(u^-\), and \(\theta\) is shown explicitly because the event outcome may depend on the pre-event mode, the intervention then in effect, and fixed or patient-specific parameters; unnecessary arguments may be omitted in a particular model.
 
