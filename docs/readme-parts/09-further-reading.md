@@ -82,6 +82,20 @@ This section is organized to mirror the mathematical, computational, application
 
 - Sorger, P. K., et al. (2011). Quantitative and systems pharmacology in the post-genomic era: New approaches to discovering drugs and understanding therapeutic mechanisms. *NIH White Paper*.
 
+#### Hybrid and stochastic-hybrid drug-effect modeling
+
+- Li, X., Qian, L., and Dougherty, E. R. (2012). *Dynamical modeling of drug effect using hybrid systems.* *EURASIP Journal on Bioinformatics and Systems Biology*, 2012, Article 19. https://doi.org/10.1186/1687-4153-2012-19
+
+  A directly relevant early application of hybrid-systems theory to drug-effect modeling. The paper couples periodic dosing, pharmacokinetic concentration profiles, and thresholded pharmacodynamic effects with gene-regulatory-network dynamics. Its hybrid domains encode clinically recognizable concentration regimes—ineffective exposure, concentration-dependent effect, and saturation—and demonstrate that dose amount and dosing interval can produce different outcomes even under comparable total drug intake. For `hybrid-ds-julia`, this paper is a conceptual and mathematical precedent rather than an implementation template: the package generalizes the same continuous-plus-discrete modeling principle to explicit treatment modes, guards, reset maps, scheduled interventions, state-triggered clinical decisions, and event-aware computational workflows.
+
+- Oduola, W. O., and Li, X. (2018). *Multiscale tumor modeling with drug pharmacokinetic and pharmacodynamic profile using stochastic hybrid system.* *Cancer Informatics*, 17, 1176935118790262. https://doi.org/10.1177/1176935118790262
+
+  A directly relevant multiscale precedent for the stochastic-hybrid extension of `hybrid-ds-julia`. The paper integrates drug PK/PD profiles with molecular, cellular, and multicellular tumor dynamics using a stochastic hybrid-system framework. Differential equations represent gene-regulatory pathways, cellular automata represent tumor behavior across cellular scales, and Markov chains represent stochastic cell behaviors conditional on gene expression, cell-cycle state, and microenvironment. Its relevance is conceptual rather than a first-implementation template: `hybrid-ds-julia` is initially focused on transparent event-aware ODE models, but this work demonstrates a longer-term path toward linking mechanistic PK/PD dynamics, discrete biological transitions, and stochastic multiscale tumor evolution when the intended question and data support that added complexity.
+
+- Baran, S. W., and Gaburro, S. (2026). *Hybrid mechanistic–machine learning PK/PD models with digital biomarkers: from cage to clinic.* *Frontiers in Pharmacology*, 17, 1815118. https://doi.org/10.3389/fphar.2026.1815118
+
+  A directly relevant review for the AI/ML extension of `hybrid-ds-julia`. It considers how mechanistic PK/PD models can be combined with machine-learning components and digital biomarkers from continuous monitoring, imaging, omics, home-cage systems, telemetry, wearables, and remote patient monitoring. The review is especially relevant to hybrid models because such data may support observation models, latent-state estimation, individual parameter calibration, covariate discovery, cross-species translation, event detection, and assessment of dosing or monitoring policies. It also emphasizes that additional ML complexity is not automatically beneficial: missingness, device drift, data leakage, poor generalizability, weak identifiability, and misalignment between sensor streams, dosing history, clinical decisions, and physiological state require explicit mitigation. The paper supports a disciplined approach in which ML augments a structurally sound mechanistic model, is evaluated against a relevant baseline, and is documented for a defined context of use.
+
 - U.S. Food and Drug Administration. Model-informed drug development and population pharmacokinetic guidance and related regulatory materials. Consult current guidance.
 
 ### Clinical operations and treatment delivery

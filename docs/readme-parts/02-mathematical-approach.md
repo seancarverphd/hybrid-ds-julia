@@ -4,6 +4,8 @@
 
 The package is motivated by models such as PK/PD and QSP systems with repeated dosing, treatment holds, toxicity thresholds, therapy switches, missed doses, adherence scenarios, and measurement-driven policies. The same mathematical structure applies more broadly to biological, clinical, industrial, ecological, and engineered systems.
 
+Stochastic event processes, multistate transition intensities, and neural jump extensions are considered as longer-term research directions in the AI/ML and mathematical extensions section. The deterministic ODE-and-event framework described here remains the core numerical and methodological foundation for those possible extensions.
+
 ### Continuous dynamics, modes, and events
 
 A hybrid model contains a continuous state:
@@ -861,967 +863,376 @@ A practical progression is:
 
 Single shooting integrates from one initial condition across the full time horizon. It can be effective for short, stable trajectories. It can become poorly conditioned when trajectories are long, unstable, stiff, highly sensitive, or repeatedly reset.
 
-Multiple shooting divides the time horizon into \(r\) intervals and introduces a state variable at each boundary:
+Multiple shooting divides the horizon into \(r\) intervals. Each interval receives its own initial state \(z_j\). The numerical problem enforces continuity or hybrid transition consistency between intervals.
+
+For interval \(j\), let:
 
 \[
-z_i\approx x(t_i),
-\qquad
-i=0,\ldots,r-1.
+x_j(t_j)=z_j,
 \]
 
-Each interval is propagated independently. Continuity conditions enforce:
+and let \(\varphi_j(z_j,\theta)\) denote the event-aware flow to the end of that interval. A standard continuity constraint is:
 
 \[
-c_i(z_i,z_{i+1},\theta)
+c_j(z_j,z_{j+1},\theta)
 =
-\Phi_i(z_i,\theta)-z_{i+1}
+\varphi_j(z_j,\theta)-z_{j+1}
 =
-0,
+0.
 \]
 
-where \(\Phi_i\) is the hybrid flow map over interval \(i\).
-
-#### Problem dimension
-
-The shooting-state decision variables have approximate dimension:
+If a known event lies at an interval boundary, the constraint must incorporate the corresponding reset map:
 
 \[
-rn.
-\]
-
-The continuity constraints have approximate dimension:
-
-\[
-(r-1)n.
-\]
-
-With \(p\) global parameters, the decision-vector dimension is approximately:
-
-\[
-rn+p.
-\]
-
-Thus multiple shooting trades:
-
-\[
-\text{a larger constrained optimization problem}
-\]
-
-for:
-
-\[
-\text{better conditioning and local control of trajectory mismatch}.
-\]
-
-#### Dense flow-map derivatives
-
-A dense Newton or SQP method may require:
-
-\[
-A_i
+c_j(z_j,z_{j+1},\theta)
 =
-\frac{\partial\Phi_i}{\partial z_i}
-\in\mathbb{R}^{n\times n}.
-\]
-
-These are segment-level state-transition matrices. Retaining them across all shooting intervals requires approximately:
-
-\[
-O(rn^2)
-\]
-
-storage.
-
-If derivatives with respect to parameters are retained:
-
-\[
-B_i
+R_j\left(\varphi_j(z_j,\theta),\theta\right)-z_{j+1}
 =
-\frac{\partial\Phi_i}{\partial\theta}
-\in\mathbb{R}^{n\times p},
+0.
 \]
 
-the additional storage is approximately:
+Multiple shooting can improve conditioning because local trajectory errors do not compound unchecked over the entire horizon. It can also expose problematic intervals, support parallel propagation of segments, and provide a natural structure for event-aware optimization.
 
-\[
-O(rnp).
-\]
-
-For dense models, if a full state-transition matrix is propagated and updated at each event, the naive event-update work can be approximately:
-
-\[
-O(mn^3).
-\]
-
-This is one reason that large-scale multiple-shooting methods often use sparse Jacobian representations, block-sparse continuity constraints, Jacobian-vector products, adjoint-vector products, matrix-free Krylov solvers, condensing, low-rank update structure, carefully selected segment boundaries, or reduced-order models.
-
-#### Why multiple shooting can help
-
-Multiple shooting is useful when:
-
-- Long horizons amplify unstable directions;
-- Small parameter changes create large trajectory changes;
-- The model has multiple time scales;
-- A fit must match measurements at intermediate times;
-- Repeated events make full-horizon single shooting poorly conditioned;
-- The optimizer starts far from a feasible trajectory;
-- Different portions of the trajectory follow different modes.
-
-For hybrid models, useful segment boundaries may occur at:
-
-- Scheduled doses or interventions;
-- Data collection times;
-- Known controller mode changes;
-- Expected gait or contact phases;
-- Known process phase changes;
-- Before and after particularly sensitive threshold regions.
-
-Unknown state-triggered events may remain inside a shooting interval. Treating their times as explicit decision variables is possible, but adds event-consistency and transversality constraints.
+Its costs include additional decision variables, continuity constraints, Jacobian blocks, nonlinear-programming overhead, and more complex handling of events that move across interval boundaries as parameters change.
 
 ### Event count, event structure, and tractability
 
-The number of events \(m\) matters, but event conditioning and structure matter just as much.
+Event count matters, but not all events have the same computational cost or scientific risk.
 
-#### Well-separated transversal events
+#### Scheduled events
 
-If events are well separated and transversal, each event adds a bounded root-localization and reset cost. With a local or sparse reset, actual cost may be modest.
+Scheduled events have known times. Their sequence is usually fixed, and their primary costs are reset execution, solver reinitialization, and derivative propagation through the reset map.
 
-#### Grazing and event-sequence changes
+For a model with \(m_s\) scheduled events, repeated monthly doses, planned inspections, or known input changes may be computationally manageable even when \(m_s\) is large, provided the resets are simple and the continuous dynamics are well conditioned.
 
-If a parameter perturbation changes:
+#### State-triggered events
 
-\[
-A\rightarrow B\rightarrow C
-\]
+State-triggered events require guard evaluation and root localization. Their timing and ordering can change with parameters, initial conditions, or controls.
 
-into:
+Let \(m_g\) be the number of realized state-triggered events. Their cost is approximately included in:
 
 \[
-A\rightarrow C,
+m_g C_{\mathrm{root}}.
 \]
 
-then the trajectory can be differentiable within a fixed event sequence but nonsmooth across the boundary between sequences.
+But their practical impact may be much larger near grazing, simultaneous crossings, or chattering. A modest number of difficult state-triggered events can be more problematic than many scheduled events.
 
-A gradient computed under the nominal event sequence may still be locally useful, but it should not be treated as globally reliable. Implementations should log and diagnose:
+#### Guard count versus realized event count
 
-- Near-grazing crossings;
-- Nearly simultaneous events;
-- Changes in event count;
-- Changes in event order;
-- Repeated immediate events;
-- Excessive root-finding iterations;
-- Solver step collapse near a guard.
+A model may define many possible guards even if only a few fire during one trajectory. Let \(G\) denote the number of guards checked. Guard evaluation can become nontrivial when:
 
-#### Chattering
+- \(G\) is large;
+- Each guard depends on expensive derived quantities;
+- Guards require communication across distributed components;
+- Many guards become nearly active at once;
+- Root-finding repeatedly evaluates a large guard set.
 
-Chattering occurs when a system repeatedly switches near the same event surface. Possible remedies, when physically justified, include:
+The package should distinguish **defined guards**, **active guards**, and **realized events** in diagnostic output.
 
-- Hysteresis bands;
-- Minimum dwell time;
-- Refractory periods;
-- Compliant or relaxation dynamics;
-- Event aggregation;
-- Smooth approximations for purely numerical switches;
-- Differential-inclusion or complementarity formulations.
+#### Chattering and Zeno-like behavior
 
-A model should not silently suppress chattering without recording that choice. The correct response depends on the domain mechanism.
+A model can generate repeated events in a short interval. Examples include a treatment rule that immediately reactivates after a hold, a relay controller without hysteresis, or a mechanical contact model with repeated impacts.
+
+A rough warning sign is a rapidly growing event count:
+
+\[
+m(t+\Delta t)-m(t)\gg 1
+\]
+
+for a very small \(\Delta t\).
+
+The package should provide safeguards such as:
+
+- Hysteresis recommendations;
+- Minimum dwell times;
+- Event-count limits;
+- Diagnostics for repeated same-time events;
+- Explicit reporting of solver termination due to event pathology.
 
 ### Dimension-specific planning guide
 
-| Model regime | Reasonable first approach | Main scaling risk | Practical response |
-|---|---|---|---|
-| \(n\lesssim 50\), \(p\lesssim 20\), modest \(m\) | Direct simulation and directional/forward derivatives | Event correctness | Log events; validate selected derivatives |
-| \(n\sim10^2\)–\(10^3\), \(p\ll n\), sparse dynamics | Sparse forward sensitivities | Jacobian products | Preserve sparsity; use matrix-free products where possible |
-| \(n\sim10^2\)–\(10^4\), large \(p\), scalar objective | Event-aware adjoint | Checkpointing and event gradients | Validate on reduced benchmark cases |
-| Long, unstable, or event-sensitive horizon | Multiple shooting | \(rn\) variables and block Jacobians | Segment at meaningful interventions or data times |
-| Full stability or flow-map analysis | Full \(\Phi\) only if necessary | \(n^2\) states and \(O(n^3)\) dense event updates | Use directional products or reduced-order analysis if possible |
-| Dense \(n\gtrsim10^3\), large \(p\) | Model reduction or specialized tools | Dense linear algebra | Exploit low rank, sparsity, locality, or surrogates |
-| Frequent grazing/chattering | Nonsmooth or regularized formulation | Derivatives may fail | Reformulate events; use hysteresis or alternative methods |
-| Primarily discrete operational problem | Discrete-event simulation or optimization | ODE machinery may add little | Use hybrid ODE methods only if a continuous state is central |
+The following guidance is deliberately approximate. Actual cost depends on stiffness, sparsity, solver choice, event geometry, data volume, objective complexity, and implementation quality.
+
+| State dimension | Typical use | Recommended initial strategy | Main risks |
+|---:|---|---|---|
+| \(n < 20\) | Small PK/PD, tumor--immune, control, or teaching models | Direct event-aware simulation; forward sensitivities; finite perturbation checks; small multistart studies | Overconfidence in gradients near event changes; under-tested event semantics |
+| \(20 \leq n < 100\) | Moderate QSP, physiological, engineering, or process models | Exploit sparsity if present; directional sensitivities; selected forward sensitivities; careful solver benchmarking | Dense sensitivity propagation becomes expensive; event logs become harder to inspect manually |
+| \(100 \leq n < 1{,}000\) | Larger QSP, network, discretized, or multicomponent models | Sparse Jacobians; matrix-free products; adjoints for scalar objectives; multiple shooting when needed | Stiffness, memory, event-adjoint complexity, expensive calibration loops |
+| \(n \geq 1{,}000\) | Large networks, spatial discretizations, multiscale or ensemble systems | Sparse/structured methods; reduced-order modeling; surrogate models; HPC or cloud ensembles; avoid full dense matrices | Full \(n^2\) objects become infeasible; dense saltation matrices and full sensitivities are generally not practical |
+
+The same table must be interpreted jointly with parameter count \(p\), event count \(m\), and the number of repeated solves required. A 50-state model with 10,000 parameters or 1,000 costly events may be harder than a sparse 500-state model with a handful of parameters and scheduled events.
 
 ### Fixed-budget planning
 
-A practical workflow consumes many more evaluations than one nominal simulation.
-
-Let:
+Before launching a large study, define the available compute budget:
 
 \[
-K
+B_{\mathrm{wall}},
+\qquad
+B_{\mathrm{CPU}},
+\qquad
+B_{\mathrm{memory}},
+\qquad
+B_{\mathrm{cost}}.
 \]
 
-be the number of objective-and-gradient evaluations required by an optimizer, sampler, calibration procedure, uncertainty study, or experimental-design loop.
+These represent limits on wall-clock time, aggregate CPU or GPU time, memory, and financial cost.
 
-Then:
-
-\[
-C_{\mathrm{total}}
-=
-K C_{\mathrm{eval+grad}}.
-\]
-
-For a fixed computational budget \(B\):
+If one evaluation costs approximately \(C_{\mathrm{eval}}\) seconds of compute, then a serial study can perform roughly:
 
 \[
-K C_{\mathrm{eval+grad}}
-\leq B.
-\]
-
-A local optimization may require tens to hundreds of evaluations. Multistart optimization may require thousands. Bayesian calibration, posterior sampling, global search, or broad uncertainty quantification may require tens of thousands to millions.
-
-If one objective-and-gradient evaluation costs 10 seconds, then:
-
-\[
-100{,}000
-\times
-10\ \mathrm{seconds}
-=
-1{,}000{,}000\ \mathrm{seconds},
-\]
-
-which is approximately:
-
-\[
-278\ \mathrm{single-worker\ hours}.
-\]
-
-Parallelization can reduce wall-clock time, but it does not reduce total compute consumption.
-
-#### State dimension versus events under a fixed budget
-
-Users commonly face tradeoffs among:
-
-- More state variables;
-- More parameters;
-- More accurate event localization;
-- More explicitly resolved events;
-- Tighter solver tolerances;
-- More optimization starts;
-- More uncertainty samples;
-- More sophisticated measurement models;
-- More expensive derivatives;
-- More detailed data assimilation.
-
-Increasing \(n\) can increase ODE, Jacobian, linear-solver, and memory cost. Increasing \(p\) can dominate forward-sensitivity cost. Increasing \(m\) can increase root finding, resets, solver restarts, and derivative updates. Increasing \(K\) can dominate all per-solve costs.
-
-A disciplined sequence is:
-
-1. Start with the smallest state model that represents the mechanism of interest.
-2. Include only events that meaningfully alter state, dynamics, parameters, or policy.
-3. Validate nominal trajectories and event order.
-4. Add a small, interpretable parameter set.
-5. Benchmark representative objective-and-gradient evaluations.
-6. Estimate the required number \(K\) of evaluations.
-7. Then select cloud hardware and a compute budget.
-
-### Illustrative AWS estimates
-
-Cloud cost should be estimated from measured wall time on representative workloads, not from asymptotics alone.
-
-For any EC2 instance with hourly price \(P_{\mathrm{hr}}\), the raw cost of a single objective-plus-gradient evaluation of duration \(t_{\mathrm{eval}}\) seconds is:
-
-\[
-\mathrm{cost/evaluation}
-=
-\frac{t_{\mathrm{eval}}}{3600}
-P_{\mathrm{hr}}.
-\]
-
-AWS bills eligible EC2 usage in one-second increments with a 60-second minimum; actual cost depends on the selected region, operating system, instance family, storage, transfer, and purchase model. Use the AWS Pricing Calculator and current regional instance prices before committing to a large run.
-
-For illustration only, if an instance costs:
-
-\[
-P_{\mathrm{hr}}=\$0.10/\mathrm{hour},
-\]
-
-then:
-
-| Objective + gradient wall time | Raw compute cost |
-|---:|---:|
-| 1 second | $0.000028 |
-| 10 seconds | $0.000278 |
-| 1 minute | $0.00167 |
-| 10 minutes | $0.0167 |
-| 1 hour | $0.10 |
-
-At this illustrative rate:
-
-| Budget | Raw instance-hours | 10-second evaluations | 1-minute evaluations | 10-minute evaluations |
-|---:|---:|---:|---:|---:|
-| $10 | 100 | 36,000 | 6,000 | 600 |
-| $100 | 1,000 | 360,000 | 60,000 | 6,000 |
-| $1,000 | 10,000 | 3.6 million | 600,000 | 60,000 |
-
-These are arithmetic upper bounds, not performance guarantees. Real throughput can be lower because of Julia compilation and warm-up, failed integrations, event pathologies, checkpointing, disk I/O, data movement, peak-memory limits, queueing, optimizer overhead, imperfect parallel efficiency, and separately launched short-lived jobs.
-
-For many short tasks, keep workers alive and batch evaluations rather than launching a new instance for every simulation.
-
-### Benchmark before scaling
-
-Before purchasing substantial cloud compute, benchmark a representative objective-and-gradient evaluation with:
-
-- The intended state dimension \(n\);
-- The intended parameter dimension \(p\);
-- The intended number of guard functions \(G\);
-- Representative realized event counts \(m\);
-- The intended solver and tolerances;
-- The intended stiff/nonstiff treatment;
-- Dense, sparse, or matrix-free derivatives;
-- The intended forward, adjoint, or multiple-shooting method;
-- Realistic data, objective, and output handling.
-
-Record:
-
-- Mean, median, and worst-case wall time;
-- Accepted and rejected solver steps;
-- Event counts and root-finding iterations;
-- Peak memory;
-- Event ordering and near-grazing diagnostics;
-- Gradient-validation error on test cases;
-- Failure rate;
-- Parallel scaling efficiency;
-- Expected number \(K\) of evaluations.
-
-A nominal simulation that runs quickly can still lead to an impractical workflow if event-aware gradients are slow, optimization requires many restarts, or event sequences are unstable across candidate parameter values.
-
-### Workflow recommendations
-
-#### Exploratory simulation
-
-For exploratory work:
-
-- Prefer low-dimensional, interpretable states;
-- Use scheduled events where timing is known;
-- Log event times, guards, reset maps, and active modes;
-- Plot guards near crossings;
-- Perturb parameters slightly to inspect event-order stability;
-- Validate event semantics before adding optimization.
-
-#### Local sensitivity analysis
-
-For local sensitivity analysis:
-
-- Begin with a small parameter vector;
-- Use directional or forward sensitivities when feasible;
-- Compare selected derivatives with perturbation calculations away from guards;
-- Record whether perturbations alter event time, count, or ordering;
-- Treat grazing and sequence changes as model warnings rather than numerical noise.
-
-#### Parameter estimation and optimization
-
-For estimation and optimization:
-
-- Use constrained low-dimensional parameterizations first;
-- Use multiple shooting when long-horizon single shooting is poorly conditioned;
-- Validate hybrid derivatives before trusting optimizer convergence;
-- Record event sequences at candidate solutions;
-- Penalize physically implausible parameter values and pathological switching;
-- Use multistart, profile, or alternative-method checks where local minima are plausible.
-
-#### Uncertainty quantification
-
-For uncertainty quantification:
-
-- Recognize that the number of evaluations may dominate cost;
-- Parallelize independent trajectories where possible;
-- Use sensitivity screening, surrogates, or reduced-order models where justified;
-- Track uncertainty in event occurrence and event order, not only uncertainty in continuous parameters;
-- Report failure modes and unidentifiable regions explicitly.
-
-#### Policy optimization and control
-
-For policy and control problems:
-
-- Specify what information the policy sees and when;
-- Distinguish scheduled from state-triggered actions;
-- Include safety, intervention-frequency, and switching costs;
-- Test robustness to measurement error, delay, missing data, and parameter uncertainty;
-- Validate policies under held-out scenarios and alternative mechanistic assumptions.
-
-### Scope and limitations
-
-`hybrid-ds-julia` is intended to support transparent hybrid ODE models, explicit events, and progressively more sophisticated analysis. It should not imply that every event-rich model admits a stable, meaningful, inexpensive, or globally differentiable gradient.
-
-Extra care is required for:
-
-- Grazing events;
-- Chattering or Zeno-like switching;
-- Simultaneous events with ambiguous ordering;
-- Discontinuous objectives;
-- Event-sequence changes under small perturbations;
-- Strong stiffness with frequent events;
-- High-dimensional dense state models;
-- Long-horizon unstable trajectories;
-- Poorly measured or weakly identifiable parameters;
-- Safety-critical or clinically consequential decision rules.
-
-In these settings, model reduction, sparse or matrix-free methods, hysteresis, regularization, multiple shooting, derivative-free optimization, nonsmooth methods, robust control, or specialized domain software may be more appropriate than a straightforward gradient-based hybrid ODE workflow.
-
-The relevant question is not only whether a model can be simulated once. It is whether its event logic, derivatives, numerical behavior, calibration assumptions, uncertainty, and computational requirements are understood well enough for the intended scientific, engineering, or decision-support use.
-
-## Opportunities for parallelization
-
-Hybrid models often contain substantial parallelism, but the most useful strategy depends on the level at which work is independent. In most applications, the highest-value and lowest-risk parallelism is **across complete trajectories**: different parameter vectors, initial conditions, subjects, experimental scenarios, Monte Carlo draws, optimization starts, or candidate policies can be simulated independently.
-
-This distinction matters because one hybrid trajectory usually has a sequential causal structure. A state-triggered event must be detected before its reset is applied, and the post-event state determines all later continuous evolution and future events. Therefore, a single event-rich trajectory rarely parallelizes as easily as a large collection of independent trajectories.
-
-The recommended order of implementation is:
-
-1. Parallelize independent simulations first.
-2. Parallelize objective components, data partitions, or shooting intervals where mathematically valid.
-3. Exploit sparse linear algebra and threaded linear solvers inside individual large simulations.
-4. Consider GPUs only when the problem has sufficiently many uniform, compatible trajectories or large data-parallel kernels.
-5. Use multi-node parallelism only after measuring single-node performance and identifying a genuine scaling bottleneck.
-
-### Parallelism levels
-
-| Level | Parallel work unit | Typical use | Main limitation |
-|---|---|---|---|
-| Across trajectories | One complete simulation | Ensembles, parameter sweeps, Monte Carlo, multistart optimization | Usually the best first target |
-| Across objective terms | Independent subjects, experiments, or data blocks | Population calibration, cross-validation, likelihood evaluation | Shared parameters require reduction of results |
-| Across shooting intervals | Segment integrations | Multiple shooting, long horizons | Continuity constraints couple segments |
-| Within one solve | Linear algebra, Jacobian products, large RHS evaluations | Large sparse or PDE-discretized models | Event handling remains sequential |
-| Across derivative directions | Tangent directions or selected columns | Small batches of directional sensitivities | Memory grows with directions |
-| Across optimizer candidates | Population methods, multistart, Bayesian sampling | Global search and robustness studies | Uneven event-rich trajectories cause load imbalance |
-| On GPUs | Many compatible trajectories or kernels | Monte Carlo, parameter sweeps, batched small ODEs | Dynamic callbacks and divergent event paths can reduce efficiency |
-
-### Embarrassingly parallel trajectory ensembles
-
-The simplest and often most effective strategy is to run complete hybrid trajectories independently.
-
-Examples include:
-
-- Different parameter vectors in a parameter sweep;
-- Different initial conditions;
-- Different dose schedules or treatment policies;
-- Different adherence realizations;
-- Different patients or virtual subjects;
-- Different perturbation protocols;
-- Different weather, demand, or disturbance realizations;
-- Monte Carlo samples;
-- Bootstrap replicates;
-- Multistart optimization candidates;
-- Cross-validation folds;
-- Posterior samples or likelihood evaluations;
-- Candidate experimental designs.
-
-If trajectory \(k\) solves:
-
-\[
-\dot{x}_k=f_{q_k}(x_k,t,\theta_k),
-\]
-
-with its own event sequence, initial condition, parameter vector, or random seed, then it can normally run independently of all other trajectories.
-
-If one trajectory has cost \(C_{\mathrm{solve}}\), and there are \(L\) independent trajectories, the total serial work is approximately:
-
-\[
-L C_{\mathrm{solve}}.
-\]
-
-With \(W\) effective workers, the ideal wall time is:
-
-\[
-T_{\mathrm{ideal}}
+N_{\mathrm{eval}}
 \approx
-\frac{L C_{\mathrm{solve}}}{W}.
+\frac{B_{\mathrm{CPU}}}{C_{\mathrm{eval}}}.
 \]
 
-Actual speedup is lower because of worker startup and compilation, unequal trajectory runtimes, different event counts, failed trajectories, memory contention, data transfer, result aggregation, and serial portions of optimization or orchestration.
-
-A useful practical model is:
+With \(w\) workers and parallel efficiency \(\eta\in(0,1]\), the wall-clock estimate is:
 
 \[
 T_{\mathrm{wall}}
 \approx
-\frac{L\overline{C}_{\mathrm{solve}}}{W}
-+
-T_{\mathrm{overhead}}
-+
-T_{\mathrm{imbalance}},
+\frac{N_{\mathrm{eval}}C_{\mathrm{eval}}}{\eta w}.
 \]
 
-where \(T_{\mathrm{imbalance}}\) reflects the fact that event-rich or stiff trajectories may take much longer than typical trajectories.
+A realistic study must account for:
 
-### Parallel parameter sweeps and scenario analysis
+- Initial compilation and environment setup;
+- Failed simulations;
+- Data loading and checkpointing;
+- Optimization iterations that terminate early or require restarts;
+- Heterogeneous trajectory cost across parameter sets;
+- Worker imbalance;
+- Debugging and benchmark time.
 
-Parameter sweeps are particularly natural for hybrid models. A user may evaluate:
+#### Example planning workflow
 
-\[
-\theta^{(1)},\theta^{(2)},\ldots,\theta^{(L)},
-\]
+1. Run a nominal event-aware solve.
+2. Measure elapsed time, allocations, accepted steps, rejected steps, event count, and root-finding diagnostics.
+3. Repeat for representative parameter sets, including stiff, near-threshold, and high-event scenarios.
+4. Measure the cost of the derivative method actually intended for use.
+5. Estimate the number of solves required by calibration, uncertainty analysis, optimization, or policy search.
+6. Add a contingency factor before provisioning compute.
 
-or different schedules:
+A reasonable early contingency factor may be 2--10x, depending on uncertainty in event behavior and solver robustness.
 
-\[
-u^{(1)}(t),u^{(2)}(t),\ldots,u^{(L)}(t).
-\]
+### Illustrative AWS estimates
 
-Each simulation can include its own event times, guard crossings, and reset sequence.
+Cloud costs vary substantially by region, instance type, operating system, pricing model, storage, data transfer, and date. The following examples are planning illustrations rather than current quotes.
 
-A treatment-model ensemble may vary initial disease burden, patient-specific PK parameters, adherence patterns, dose intervals, toxicity thresholds, resistance parameters, monitoring schedules, and treatment-switch rules. A locomotion ensemble may vary initial posture, sensory delay, feedback gains, ground-contact parameters, perturbation magnitude, stepping threshold, controller mode, and noise realization.
-
-A parameter sweep is often more informative than optimizing one nominal model because it exposes regions where event count, event order, stability, or feasibility changes.
-
-### Monte Carlo and uncertainty quantification
-
-Monte Carlo simulations are generally trajectory-parallel.
-
-Suppose uncertain parameters or disturbances are sampled as:
-
-\[
-\theta^{(k)}\sim\pi(\theta),
-\qquad
-k=1,\ldots,L.
-\]
-
-For each sample, a hybrid trajectory produces an output:
+Suppose a model requires 30 seconds for one event-aware forward solve on one CPU core, and a calibration workflow requires 20,000 solves. The raw serial compute requirement is:
 
 \[
-y^{(k)}
+20{,}000\times 30\ \mathrm{s}
 =
-\mathcal{H}\bigl(x^{(k)},q^{(k)},\theta^{(k)}\bigr).
+600{,}000\ \mathrm{s}
+\approx 167\ \mathrm{CPU\ hours}.
 \]
 
-The resulting ensemble can estimate quantities such as:
+With 32 effective workers and 75% parallel efficiency:
 
 \[
-\mathbb{E}[y],
-\qquad
-\mathrm{Var}(y),
-\qquad
-\Pr(y\in\mathcal{A}),
+T_{\mathrm{wall}}
+\approx
+\frac{167}{32\times 0.75}
+\approx 7\ \mathrm{hours}.
 \]
 
-or the probability that a threshold, treatment hold, failure event, or unsafe state occurs.
-
-Hybrid uncertainty quantification should report discrete uncertainty as well as continuous uncertainty. Useful outputs include:
-
-- Probability that a treatment hold occurs;
-- Distribution of event times;
-- Probability of a specific event sequence;
-- Probability of a controller mode switch;
-- Probability of treatment failure;
-- Distribution of event count;
-- Probability that a trajectory enters a chattering regime.
-
-For large ensembles, workers should use dynamic scheduling rather than equal-sized static blocks when trajectory costs are highly variable.
-
-### Parallel multistart and population optimization
-
-Many hybrid optimization problems are nonconvex because of nonlinear dynamics, multiple modes, threshold decisions, event-sequence changes, discontinuous feasibility boundaries, parameter nonidentifiability, or multiple stable attractors.
-
-A robust workflow often uses multiple starting points:
+If a particular compute configuration costs, for illustration, \$1.50 per instance-hour and uses four such instances for approximately seven hours, the rough compute charge would be:
 
 \[
-\theta_0^{(1)},\ldots,\theta_0^{(L)}.
+4\times 7\times \$1.50
+=
+\$42.
 \]
 
-Each local optimization can run independently until its results are collected and compared.
+This calculation excludes storage, orchestration, data transfer, failed jobs, retries, and the cost of development time. It also assumes the workload parallelizes well.
 
-This is an attractive use of distributed compute because the principal coupling occurs only at the beginning and end of each optimization run.
+For a gradient-based calibration with an adjoint cost of roughly five forward solves per objective evaluation, the compute demand could rise substantially. If 1,000 optimization iterations each require one objective-and-gradient evaluation, and each costs 150 seconds, then:
+
+\[
+1{,}000\times 150\ \mathrm{s}
+\approx 42\ \mathrm{CPU\ hours}.
+\]
+
+This may still be modest on a cloud cluster, but only if event handling, checkpointing, and adjoint replay are stable. In practice, implementation and validation effort may dominate raw compute cost.
+
+### Benchmark before scaling
+
+A package intended for serious hybrid-model workflows should include benchmark cases that vary at least:
+
+- State dimension \(n\);
+- Parameter dimension \(p\);
+- Number of scheduled events;
+- Number and conditioning of state-triggered events;
+- Stiff versus nonstiff dynamics;
+- Sparse versus dense Jacobian structure;
+- Local versus global reset maps;
+- Smooth versus near-grazing event geometry;
+- Single shooting versus multiple shooting;
+- Forward versus adjoint derivative tasks.
+
+Each benchmark should report more than wall-clock time. Useful outputs include:
+
+- Solver and tolerance configuration;
+- Accepted and rejected steps;
+- Event count and event types;
+- Root-finding calls or diagnostics where available;
+- Memory allocation;
+- Derivative-check error away from event-sequence changes;
+- Failure mode if the solve or derivative calculation is not valid;
+- Hardware and software versions.
+
+### Workflow recommendations
+
+For small models, prioritize correctness, interpretability, and derivative validation before optimization.
+
+For medium models, exploit structure early: sparse Jacobians, local resets, selected sensitivity directions, and carefully chosen observation models.
+
+For large models, avoid default dense formulations. Do not propagate full state-transition matrices or dense parameter-sensitivity matrices unless the problem size demonstrably permits them. Prefer matrix-free products, sparse methods, adjoints for scalar objectives, reduced-order representations, and parallel trajectory ensembles.
+
+For all scales, treat the event sequence as a scientific output. A fast optimization result is not useful if it relies on unstable event ordering, unresolved chattering, poorly localized guard crossings, or a model whose intervention logic is not interpretable.
+
+## Opportunities for parallelization
+
+Hybrid models offer several forms of parallelism, but event handling changes which strategies are effective. The most reliable parallelism is usually across independent trajectories or independent optimization starts. Parallelizing within one event-rich trajectory is more difficult because each event can depend on the preceding continuous state, event time, and mode.
+
+### Parallelism levels
+
+A hybrid-model workflow can often be decomposed at several levels:
+
+1. **Across independent parameter sets:** multistart calibration, profile likelihoods, parameter sweeps, and global sensitivity studies.
+2. **Across uncertainty samples:** Monte Carlo trajectories, virtual-patient cohorts, bootstrap replicates, or stochastic realizations.
+3. **Across candidate policies:** dose schedules, thresholds, monitoring rules, or controller settings.
+4. **Across multiple-shooting intervals:** subject to continuity constraints and event-boundary handling.
+5. **Within linear algebra kernels:** sparse factorizations, Jacobian-vector products, adjoint operations, and batched neural-network evaluations.
+6. **Across independent models or scenarios:** different mechanisms, disease subtypes, interventions, or data splits.
+
+The first three are often embarrassingly parallel and should be the first targets for scaling.
+
+### Embarrassingly parallel trajectory ensembles
+
+Suppose \(M\) independent trajectories must be simulated, each with average cost \(C_{\mathrm{solve}}\). The serial cost is:
+
+\[
+C_{\mathrm{serial}}
+\approx
+M C_{\mathrm{solve}}.
+\]
+
+With \(w\) workers and efficiency \(\eta\), the wall time is approximately:
+
+\[
+T_{\mathrm{wall}}
+\approx
+\frac{M C_{\mathrm{solve}}}{\eta w}.
+\]
 
 Examples include:
 
-- Multistart parameter estimation;
-- Comparing treatment-policy parameterizations;
-- Searching controller-gain spaces;
-- Optimizing alternative experimental protocols;
-- Population-based evolutionary algorithms;
-- Particle-swarm or CMA-ES style methods;
-- Bayesian optimization with batch candidate evaluation;
-- Independent MCMC chains.
+- Virtual-patient simulations across sampled parameter sets;
+- Dose-response grids;
+- Alternative adherence scenarios;
+- Threshold-policy comparisons;
+- Cross-validation folds;
+- Bootstrap resampling;
+- Randomized initial conditions;
+- Independent experimental designs.
 
-For a population-based optimizer with \(L\) candidates per generation, the evaluation stage is often parallel:
+The main engineering requirements are reproducible random-number streams, structured result collection, failure handling, and logging of event summaries for each trajectory.
 
-\[
-\mathcal{L}\bigl(\theta^{(1)}\bigr),
-\ldots,
-\mathcal{L}\bigl(\theta^{(L)}\bigr).
-\]
+### Monte Carlo and uncertainty quantification
 
-The update from one generation to the next is usually synchronized, so the speedup depends on the slowest candidate evaluation in each generation.
+For uncertainty quantification, each sample may produce a different event sequence. This is scientifically important: uncertainty can change not only continuous outcomes but also whether a treatment hold occurs, which event happens first, or whether a threshold is ever reached.
 
-### Parallel likelihoods, subjects, and experiments
+A useful output is therefore not only a distribution of terminal states but also distributions of:
 
-Many inference objectives decompose across independent data units.
+- Event counts;
+- Event times;
+- Mode occupancy times;
+- Probability of each event type;
+- Probability of a clinically or operationally relevant event sequence;
+- Constraint violations;
+- Policy switching frequency.
 
-Suppose a shared parameter vector \(\theta\) is fitted to data from \(S\) subjects, experiments, sites, or trials:
+Parallel Monte Carlo is usually straightforward, but rare events may require variance-reduction methods, importance sampling, splitting methods, or carefully designed scenario analysis.
 
-\[
-\mathcal{L}(\theta)
-=
-\sum_{s=1}^{S}
-\mathcal{L}_s(\theta).
-\]
+### Parallel multistart and population optimization
 
-If each subject or experiment has a conditionally independent trajectory:
+Global optimization and calibration often require many candidate evaluations. These are natural candidates for distributed execution:
 
-\[
-\dot{x}_s=f_{q_s}(x_s,t,\theta,\eta_s),
-\]
+- Random multistart local optimization;
+- Evolutionary algorithms;
+- Particle-based methods;
+- Bayesian optimization batches;
+- Population Monte Carlo;
+- Approximate Bayesian computation;
+- Profile likelihoods;
+- Parameter grids or Latin-hypercube designs.
 
-then objective and gradient contributions can be computed independently:
-
-\[
-\mathcal{L}_s(\theta),
-\qquad
-\nabla_\theta\mathcal{L}_s(\theta).
-\]
-
-They are then reduced:
-
-\[
-\mathcal{L}(\theta)
-=
-\sum_{s=1}^{S}\mathcal{L}_s(\theta),
-\]
-
-\[
-\nabla_\theta\mathcal{L}(\theta)
-=
-\sum_{s=1}^{S}\nabla_\theta\mathcal{L}_s(\theta).
-\]
-
-This is appropriate for population PK/PD analyses, multiple virtual patients, treatment arms, replicated animal experiments, movement trials, environmental sites, production batches, or building units.
-
-Care is required if the model contains shared latent variables, global resource constraints, coupling among subjects, or a hierarchical statistical model that requires joint inference. In that case, simulation may still be parallel, but the inference or likelihood-reduction step may be more complicated.
+Hybrid models add a complication: two candidate parameter sets may generate different event sequences, so the objective landscape can be nonsmooth or piecewise smooth. Parallel evaluation remains useful, but optimization diagnostics should record event-sequence changes and solver failures rather than treating all objective evaluations as equivalent.
 
 ### Multiple shooting and time-domain decomposition
 
-Multiple shooting introduces a natural but limited form of time-domain parallelism.
+Multiple shooting can expose parallelism because each interval propagation can be performed separately once its interval-initial state is specified. However, the intervals are coupled by continuity constraints and event maps.
 
-Let the interval:
-
-\[
-[t_0,T]
-\]
-
-be divided into \(r\) shooting segments:
+For \(r\) intervals, one can evaluate:
 
 \[
-[t_0,t_1],
-[t_1,t_2],
+\varphi_1(z_1,\theta),
 \ldots,
-[t_{r-1},T].
+\varphi_r(z_r,\theta)
 \]
 
-Given tentative shooting-node states:
+in parallel, then assemble the continuity constraints.
 
-\[
-z_0,z_1,\ldots,z_{r-1},
-\]
+This can be attractive for long trajectories, unstable systems, or parameter-estimation problems with many observation intervals. But event times that move across interval boundaries complicate the formulation. A robust implementation should either:
 
-the segment flows:
-
-\[
-\Phi_i(z_i,\theta)
-\]
-
-can be integrated independently.
-
-The continuity residuals:
-
-\[
-c_i
-=
-\Phi_i(z_i,\theta)-z_{i+1}
-\]
-
-are then assembled.
-
-This yields a parallel pattern:
-
-1. Distribute segment integrations.
-2. Compute local trajectory outputs and local derivative information.
-3. Assemble continuity constraints and objective contributions.
-4. Solve the coupled optimization or linearized correction problem.
-5. Update shooting nodes and repeat.
-
-The continuous segment solves parallelize, but the nonlinear-programming or linear-system solve that reconciles all continuity constraints remains coupled.
-
-Multiple shooting can reduce wall time for large problems only if each segment is computationally substantial, communication and assembly overhead are modest, the optimizer exploits block sparsity, and event handling within each segment remains stable. It is not automatically beneficial for short inexpensive trajectories.
-
-### Parallel directional derivatives
-
-A full forward sensitivity matrix has shape:
-
-\[
-S_\theta
-=
-\frac{\partial x}{\partial\theta}
-\in\mathbb{R}^{n\times p}.
-\]
-
-The \(p\) columns correspond to parameter directions. In principle, subsets of those columns can be propagated in parallel.
-
-If the parameter set is divided into \(B\) blocks:
-
-\[
-\theta=
-\left(
-\theta^{[1]},
-\theta^{[2]},
-\ldots,
-\theta^{[B]}
-\right),
-\]
-
-then sensitivity blocks can be computed separately:
-
-\[
-S_\theta
-=
-\left[
-S^{[1]}
-\;
-S^{[2]}
-\;
-\cdots
-\;
-S^{[B]}
-\right].
-\]
-
-This can be useful when the state dimension is moderate, the parameter count is larger than one worker can handle efficiently, the event sequence is fixed and reproducible, and memory is sufficient.
-
-However, this is often not the first parallelization target. Trajectory-level parallelism is usually simpler and has lower communication requirements.
-
-A full state-transition matrix:
-
-\[
-\Phi(t,t_0)\in\mathbb{R}^{n\times n}
-\]
-
-can likewise be computed by propagating blocks of tangent directions. But if a dense full \(\Phi\) is required, the total amount of arithmetic remains large:
-
-\[
-O(n^3)
-\]
-
-for dense matrix-matrix updates at an event. Parallelism reduces wall time only if memory bandwidth, communication, and dense-linear-algebra implementation scale effectively.
-
-### Parallelism inside one large trajectory
-
-A single large hybrid trajectory may benefit from internal parallelism when continuous dynamics are high dimensional.
-
-Possible sources include:
-
-- Threaded right-hand-side evaluation;
-- Sparse Jacobian construction;
-- Parallel Jacobian-vector products;
-- Parallel residual evaluation;
-- Threaded sparse linear solves;
-- Multithreaded dense BLAS/LAPACK operations;
-- Parallel PDE spatial discretizations;
-- GPU kernels for large vectorized state updates;
-- Parallel observation-model evaluation;
-- Parallel objective contributions at measurement times.
-
-This form of parallelism is most promising when \(n\) is large and continuous-state updates have substantial arithmetic intensity.
-
-It is less useful for small ODE systems with frequent scalar event logic. In that setting, synchronization, branching, cache effects, and task overhead can exceed the work performed per step.
-
-Hybrid events constrain within-trajectory parallelism because they establish a temporal dependency:
-
-\[
-x(t^-)
-\rightarrow
-\text{event detection}
-\rightarrow
-x(t^+)
-\rightarrow
-\text{future trajectory}.
-\]
-
-No later segment of the same single-shooting trajectory can be finalized until event state and mode are known.
-
-### Shared-memory threading
-
-Julia supports shared-memory multithreading: multiple tasks may execute simultaneously on CPU threads while sharing one process memory space.
-
-Shared-memory threading is appropriate when model data are naturally shared, trajectory calculations are relatively small, communication overhead should be minimal, or many independent simulations fit on one machine.
-
-Important implementation considerations include:
-
-- Avoid mutation of shared arrays from multiple trajectories;
-- Give each trajectory independent state, cache, random-number generator, and output storage;
-- Avoid global mutable state in callback functions;
-- Do not rely on callback execution order across trajectories;
-- Use reproducible per-trajectory random seeds when stochastic perturbations are present;
-- Check whether the ODE solver, linear solver, and BLAS libraries are already using threads to avoid oversubscription.
-
-Oversubscription occurs when outer trajectory threading and inner linear algebra threading both attempt to use all available cores. Benchmark combinations deliberately.
-
-### Distributed-memory parallelism
-
-Julia also supports distributed computing with multiple processes that have separate memory spaces. These processes can run on one machine or across multiple machines.
-
-Distributed processes are appropriate when individual trajectories are moderately expensive, memory requirements exceed a single process or node, many simulations must run independently, failure isolation is useful, or a cluster or cloud environment is available.
-
-Distributed execution introduces additional requirements:
-
-- Serialize or package model code and dependencies consistently;
-- Move only necessary data to workers;
-- Avoid repeatedly transferring large immutable input data;
-- Aggregate small summaries rather than complete time-series trajectories when possible;
-- Save detailed trajectories to worker-local or object storage only when needed;
-- Record package versions, solver options, random seeds, and hardware metadata;
-- Design jobs to tolerate worker failure and restart.
-
-For cloud runs, independent-trajectory workloads are usually better candidates for distributed parallelism than tightly coupled single-trajectory time-domain decomposition.
+- Place known scheduled events at fixed interval boundaries;
+- Allow event-aware interval propagation with clear ownership rules; or
+- Adaptively redefine intervals while tracking derivative consequences.
 
 ### GPU opportunities and limitations
 
-GPUs are most attractive when many trajectories have similar numerical structure and can run in a batched, data-parallel fashion.
+GPUs can be useful when a workflow consists of many similar, independent, moderately sized trajectories or large batched neural-network evaluations. Potential applications include:
 
-Good GPU candidates include:
+- Large virtual-patient ensembles;
+- Batched surrogate-model evaluation;
+- Neural differential-equation components;
+- Fixed-step or regularly structured simulation kernels;
+- Large matrix operations arising in learned models.
 
-- Large Monte Carlo ensembles;
-- Parameter sweeps;
-- Large collections of short, similarly structured trajectories;
-- Batched initial-condition studies;
-- GPU-compatible neural ODE or surrogate components;
-- High-dimensional vectorized state updates;
-- Large sparse or dense linear-algebra kernels;
-- Ensemble uncertainty quantification.
+GPU acceleration is less straightforward when:
 
-Hybrid event logic creates GPU-specific challenges:
+- Each trajectory has a different event count or event sequence;
+- Root finding creates irregular control flow;
+- Adaptive time stepping varies widely across samples;
+- Resets require dynamic memory allocation or complex branching;
+- The model is small and host-device transfer dominates;
+- Sparse linear algebra is irregular or poorly supported.
 
-- Different trajectories may experience different event counts;
-- Different trajectories may cross different guards;
-- Root-finding iterations may differ;
-- Branching can cause warp divergence;
-- Dynamic allocation and arbitrary callback logic may not compile or perform well on GPU hardware;
-- Event sequences may create irregular memory access;
-- Some solvers, callbacks, AD paths, and linear algebra routines may not be GPU compatible.
-
-Therefore, GPU acceleration should be treated as a later optimization step, not a default assumption.
-
-> GPUs are most promising for large ensembles of similar trajectories with predictable event structure. CPUs are often simpler and more robust for a small number of irregular, stiff, event-rich trajectories.
-
-### Load balancing for event-rich ensembles
-
-Hybrid ensembles often have variable trajectory cost.
-
-One trajectory might have:
-
-\[
-m=0
-\]
-
-events and finish quickly. Another may have:
-
-\[
-m\gg 1,
-\]
-
-many rejected steps, stiffness, a near-grazing threshold, or chattering. Static assignment of the same number of simulations to each worker can leave some workers idle while one worker processes difficult cases.
-
-Use dynamic scheduling when run times vary substantially:
-
-- Queue individual trajectories or small batches;
-- Allow idle workers to request additional work;
-- Use work-stealing or dynamic map scheduling where appropriate;
-- Group simulations with similar expected cost only if that cost can be predicted reliably;
-- Treat solver failures and event pathologies as first-class outcomes to log and reschedule or analyze.
-
-For Monte Carlo work, collecting only summary statistics can improve scaling:
-
-\[
-\left(
-\text{objective},
-\text{event count},
-\text{event times},
-\text{terminal state},
-\text{failure code}
-\right),
-\]
-
-rather than retaining every state value at every solver time point for every realization.
-
-### Reproducibility under parallel execution
-
-Parallel execution can make results harder to reproduce unless the workflow is designed carefully.
-
-For each trajectory, record:
-
-- A deterministic trajectory identifier;
-- Parameter vector;
-- Initial condition;
-- Random seed or random-number-generator state;
-- Solver and tolerance configuration;
-- Event/callback configuration;
-- Package and Julia versions;
-- Hardware and worker information;
-- Event log;
-- Outcome status and failure diagnostics.
-
-A robust strategy is to derive a per-trajectory seed from a master seed and trajectory identifier:
-
-\[
-\mathrm{seed}_k
-=
-h(\mathrm{master\ seed},k),
-\]
-
-where \(h\) is a deterministic hash or seed-generation rule.
-
-Do not rely on the order in which parallel tasks happen to finish. Completion order can vary across machines and runs even when individual numerical calculations are deterministic.
+A practical strategy is often hybrid: run event-rich trajectory orchestration on CPUs while using GPUs for batched smooth computations, neural components, or large ensembles with similar structure.
 
 ### AWS Batch and cloud orchestration
 
-For large independent trajectory ensembles, AWS Batch array jobs are a natural cloud-execution pattern. An array job creates multiple child jobs from one submission; each child job can use its assigned array index to select a parameter block, replicate, optimization start, or simulation batch.
+For large independent workloads, cloud orchestration can separate the scientific model from the execution layer. A typical pattern is:
 
-A practical array-job design is:
+1. Package the Julia environment and model code in a reproducible container.
+2. Define one job input per parameter set, uncertainty sample, policy, or optimization start.
+3. Submit jobs to a managed batch system.
+4. Write structured results and event logs to durable storage.
+5. Aggregate successful and failed jobs separately.
+6. Reproduce selected runs locally or in a controlled environment.
 
-1. Build a container with a fixed Julia version, project environment, model code, and scripts.
-2. Store immutable input data and parameter grids in object storage or package them with the job.
-3. Assign each child job a deterministic subset of trajectory indices.
-4. Write per-job summaries, diagnostics, and optional detailed outputs.
-5. Run a final aggregation job after the array completes.
-6. Record the container image digest, git commit, package manifest, and random-seed policy.
+Cloud execution should record:
 
-Multi-node parallel jobs are possible when one tightly coupled computation must span multiple machines, but they require distributed-communication libraries and more complex orchestration. They are generally not the first choice for independent hybrid trajectories.
+- Git commit or package version;
+- Julia and dependency versions;
+- Solver and tolerance settings;
+- Random seed or stream identifier;
+- Input parameter set;
+- Hardware or instance type;
+- Wall time and memory use;
+- Event summary;
+- Failure status and diagnostic output.
 
-### Parallelization strategy by workflow
-
-| Workflow | Best first parallelization target | Usually avoid first |
-|---|---|---|
-| Parameter sweep | Independent parameter vectors | Distributed full state-transition matrices |
-| Monte Carlo uncertainty analysis | Independent random draws | GPU use before checking event divergence |
-| Population PK/PD simulation | Virtual patients or subjects | One tightly coupled multi-node solve |
-| Multistart calibration | Independent starts | Parallelizing every small derivative column |
-| Bayesian sampling | Independent chains or batched proposals | Shared mutable likelihood state |
-| Multiple shooting | Segment solves and subject-level data blocks | Excessive segmentation of cheap trajectories |
-| Large stiff sparse model | Threaded/sparse internal linear algebra | GPU migration without compatibility testing |
-| Policy optimization | Candidate policies and scenarios | Assuming a single trajectory can be time-parallelized |
-| Experimental design | Candidate designs and simulated replicates | Retaining every full trajectory unnecessarily |
-
-### Recommended implementation sequence
-
-A practical staged plan is:
-
-1. **Make one trajectory correct.** Validate continuous dynamics, guard functions, reset maps, event ordering, and diagnostics.
-2. **Make one trajectory reproducible.** Fix solver settings, seeds, data versions, and output schema.
-3. **Benchmark one trajectory.** Measure wall time, memory, accepted/rejected steps, event count, and output size.
-4. **Run a small threaded ensemble.** Test 2, 4, and 8 workers. Confirm numerical reproducibility and absence of shared-state errors.
-5. **Measure speedup and memory.** Compare observed speedup with ideal scaling. Inspect whether event-rich trajectories create load imbalance.
-6. **Move independent work to distributed processes or cloud jobs.** Do this when trajectories are expensive enough to justify process, machine, or container overhead.
-7. **Consider GPU execution only after profiling.** Confirm that callbacks, event structure, solver choice, and model code are compatible and that trajectories are sufficiently uniform.
-8. **Consider multi-node coupled parallelism only for proven bottlenecks.** Use it for large structured problems whose internal linear algebra or multiple-shooting formulation genuinely requires it.
-
-### Scope and limitations
-
-Parallelism reduces wall-clock time when work is independent or can be decomposed with limited communication. It does not remove underlying arithmetic, memory, event-handling, or numerical-conditioning costs.
-
-In hybrid systems, the main limitations are structural:
-
-- Events within one trajectory create temporal dependencies;
-- Grazing and chattering can make some trajectories much more expensive than others;
-- Event-sequence changes can complicate derivative calculations;
-- GPU efficiency can fall when trajectories diverge in branches, event counts, or root-finding paths;
-- Multiple shooting makes segment propagation parallel but retains globally coupled continuity constraints;
-- Distributed computing adds serialization, scheduling, data-transfer, and reproducibility responsibilities.
-
-The best initial use of parallel computing in `hybrid-ds-julia` is therefore likely to be reproducible ensembles of independent trajectories. More tightly coupled parallel methods should be introduced only where benchmarking shows that they solve a meaningful computational bottleneck.
+The package itself need not implement cloud infrastructure in its first version. It should, however, make independent simulations reproducible, serializable, and easy to invoke from scripts or workflow managers.
