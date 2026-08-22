@@ -8,8 +8,11 @@ parts = [
   '05-other-applications.md',
   '06-example-applications.md',
   '07-crop-motivation-and-software-plan.md',
-  '08-roadmap-and-licensing.md/',
-  '09-further-reading.md'
+  '08-roadmap-and-licensing.md',
+  '09-hybrid-and-translational-reading.md',
+  '10-clinical-operations-and-treatment-delivery-reading.md',
+  '11-engineering-environmental-and-biological-applications-reading.md',
+  '12-labs-and-modeling-limits-reading.md'
 ]
 
 
