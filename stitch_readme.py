@@ -2,7 +2,8 @@ from pathlib import Path
 
 parts = [
   '01-overview-and-context.md',
-  '02-mathematical-approach.md',
+  '02a.md',
+  '02b.md',
   '03-ai-ml-mathematical-extensions.md',
   '04-test-beds.md',
   '05-other-applications.md',
