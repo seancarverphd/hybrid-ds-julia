@@ -565,56 +565,71 @@ For a proposed model, useful checks include:
 
 Model fit alone is insufficient. A model can reproduce observed trajectories while assigning them to the wrong latent mechanism, especially when hidden states are weakly measured or confounded.
 
-
 ## Computational scaling, event complexity, and practical compute budgets
+
 
 This section is for users planning a substantial simulation, calibration, sensitivity-analysis, optimization, control, or uncertainty-quantification workflow. It explains how computational requirements depend on state dimension, parameter dimension, event count, event geometry, solver choices, and the repeated-evaluation demands of the intended task.
 
+
 This README is intentionally modular. Readers who need only a small event-aware simulation can skip much of this section. Readers planning high-dimensional models, gradient-based inference, multiple shooting, event-aware optimization, or cloud-scale parameter studies should use this section to select an appropriate numerical formulation before investing substantial implementation or compute time.
+
 
 The central point is:
 
+
 > The difficulty of a hybrid model is not determined by state dimension alone. It depends on the interaction among continuous dynamics, parameter dimension, event frequency, event conditioning, derivative requirements, solver behavior, and the number of repeated simulations required by the intended workflow.
+
 
 ### Model notation and baseline cost
 
+
 Consider a mode-dependent hybrid ODE:
 
-\[
+
+$$
 \dot{x}(t)=f_{q(t)}\bigl(x(t),t,\theta,u(t)\bigr),
-\]
+$$
+
 
 where:
 
-- \(x(t)\in\mathbb{R}^{n}\) is the continuous state vector;
-- \(n\) is the number of continuous state variables;
-- \(q(t)\) is a discrete mode;
-- \(\theta=(\theta_1,\ldots,\theta_p)\in\mathbb{R}^{p}\) is the parameter vector;
-- \(p\) is the number of scalar parameters whose effects may be analyzed, estimated, or optimized.
 
-Depending on the application, \(\theta\) may include kinetic rates, PK/PD parameters, initial-condition parameters, controller gains, event thresholds, reset-map parameters, dose sizes, or policy parameters.
+- $x(t)\in\mathbb{R}^{n}$ is the continuous state vector;
+- $n$ is the number of continuous state variables;
+- $q(t)$ is a discrete mode;
+- $\theta=(\theta_1,\ldots,\theta_p)\in\mathbb{R}^{p}$ is the parameter vector;
+- $p$ is the number of scalar parameters whose effects may be analyzed, estimated, or optimized.
+
+
+Depending on the application, $\theta$ may include kinetic rates, PK/PD parameters, initial-condition parameters, controller gains, event thresholds, reset-map parameters, dose sizes, or policy parameters.
+
 
 Let:
 
-- \(m\) be the number of realized events during one simulated trajectory;
-- \(G\) be the number of guard functions evaluated for state-triggered events;
-- \(N\) be the number of accepted time-integration steps;
-- \(r\) be the number of intervals in a multiple-shooting formulation;
-- \(C_f\) be the cost of evaluating the continuous right-hand side \(f_q\);
-- \(C_{\mathrm{root}}\) be the additional cost of locating one state-triggered event;
-- \(C_{\mathrm{reset}}\) be the cost of executing its reset, mode change, and associated bookkeeping.
+
+- $m$ be the number of realized events during one simulated trajectory;
+- $G$ be the number of guard functions evaluated for state-triggered events;
+- $N$ be the number of accepted time-integration steps;
+- $r$ be the number of intervals in a multiple-shooting formulation;
+- $C_f$ be the cost of evaluating the continuous right-hand side $f_q$;
+- $C_{\mathrm{root}}$ be the additional cost of locating one state-triggered event;
+- $C_{\mathrm{reset}}$ be the cost of executing its reset, mode change, and associated bookkeeping.
+
 
 For a nominal hybrid simulation without derivative propagation, define the first-order bookkeeping cost:
 
-\[
+
+$$
 C_{\mathrm{solve}}
 :=
 N C_f
 +
 m\left(C_{\mathrm{root}}+C_{\mathrm{reset}}\right).
-\]
+$$
+
 
 This is the approximate cost of one **forward solve**. It is not a complete solver-performance model. In particular, it omits or absorbs into the constants:
+
 
 - Rejected adaptive steps;
 - Dense interpolation;
@@ -628,73 +643,99 @@ This is the approximate cost of one **forward solve**. It is not a complete solv
 - Parallelization overhead;
 - Numerical difficulty near discontinuities.
 
+
 Scheduled events—such as a known dose at a known time—are often cheaper than state-triggered events because their times are supplied directly. A threshold crossing requires detection and localization, and may force solver reinitialization.
+
 
 ### What makes an event difficult?
 
+
 A state-triggered event is commonly defined by a guard:
 
-\[
+
+$$
 g_i(x(t),t,\theta)=0.
-\]
+$$
+
 
 When the event occurs, the model may apply a state reset:
 
-\[
+
+$$
 x^+=R_i(x^-,t,\theta),
-\]
+$$
+
 
 change parameters,
 
-\[
+
+$$
 \theta^+=P_i(\theta^-,x^-,t),
-\]
+$$
+
 
 or change the active mode:
 
-\[
+
+$$
 q^+=T_i(q^-,x^-,t).
-\]
+$$
+
 
 The vector field may therefore switch from:
 
-\[
+
+$$
 \dot{x}=f_{q^-}(x,t,\theta)
-\]
+$$
+
 
 to:
 
-\[
+
+$$
 \dot{x}=f_{q^+}(x,t,\theta).
-\]
+$$
+
 
 A hybrid event has three computational effects:
+
 
 1. The solver must detect and localize the event time.
 2. The model must execute the reset or mode change.
 3. A derivative-aware method must account for the fact that perturbations can change both the event time and the post-event state.
 
+
 The third effect is crucial. A parameter change can cause an event to occur earlier or later, causing the system to spend a different amount of time under the pre-event and post-event vector fields. This is why differentiating only the smooth ODE segments is not enough.
+
 
 #### Transversal events
 
+
 An event is transversal when:
 
-\[
+
+$$
 \frac{d}{dt}g_i(x(t),t,\theta)\neq 0.
-\]
+$$
+
 
 Such events are usually well behaved for root finding and first-order sensitivity analysis.
 
+
 #### Grazing events
+
 
 At a grazing event:
 
-\[
+
+$$
 \frac{d}{dt}g_i(x(t),t,\theta)\approx 0.
-\]
+$$
+
 
 Small changes in state or parameters can then produce large changes in event time, cause an event to appear or disappear, or alter event ordering. Grazing events can therefore create:
+
 
 - Very small solver steps;
 - Large, unstable, or undefined local sensitivities;
@@ -702,52 +743,67 @@ Small changes in state or parameters can then produce large changes in event tim
 - Ambiguous event classification;
 - Scientific fragility in threshold-based policy conclusions.
 
+
 This is not merely a numerical problem. It often means that the underlying intervention, contact, switching, or decision rule is structurally sensitive.
 
-### Jacobians, variational flow, and \(O(n^2)\) state equations
 
-There are two related but distinct \(n\times n\) objects.
+### Jacobians, variational flow, and $O(n^2)$ state equations
+
+
+There are two related but distinct $n\times n$ objects.
+
 
 The first is the **state Jacobian** of the vector field:
 
-\[
+
+$$
 J_x(t)
 =
 \frac{\partial f_q}{\partial x}
 \bigl(x(t),t,\theta\bigr)
 \in\mathbb{R}^{n\times n}.
-\]
+$$
 
-If dense, it has \(n^2\) entries. However, it is not automatically an additional set of \(n^2\) ODE states. A numerical method may form it explicitly, approximate it, exploit sparsity, use Jacobian-vector products, generate it by automatic differentiation, or avoid forming it in explicit methods.
+
+If dense, it has $n^2$ entries. However, it is not automatically an additional set of $n^2$ ODE states. A numerical method may form it explicitly, approximate it, exploit sparsity, use Jacobian-vector products, generate it by automatic differentiation, or avoid forming it in explicit methods.
+
 
 The second object is the **state-transition matrix**, or Jacobian of the flow with respect to the initial condition:
 
-\[
+
+$$
 \Phi(t,t_0)
 =
 \frac{\partial x(t)}{\partial x(t_0)}
 \in\mathbb{R}^{n\times n}.
-\]
+$$
+
 
 If the full state-transition matrix is propagated, it satisfies:
 
-\[
+
+$$
 \dot{\Phi}(t)
 =
 J_x(t)\Phi(t,t_0),
 \qquad
 \Phi(t_0,t_0)=I_n.
-\]
+$$
 
-This does introduce \(n^2\) additional scalar differential equations. Together with the original state equations, the augmented smooth system has:
 
-\[
+This does introduce $n^2$ additional scalar differential equations. Together with the original state equations, the augmented smooth system has:
+
+
+$$
 n+n^2
-\]
+$$
+
 
 continuous scalar states.
 
-The full matrix \(\Phi\) is useful when a method needs derivatives of the flow with respect to **all** initial-state directions. Examples include:
+
+The full matrix $\Phi$ is useful when a method needs derivatives of the flow with respect to **all** initial-state directions. Examples include:
+
 
 - Dense multiple-shooting Jacobian blocks;
 - Stability analysis;
@@ -756,168 +812,220 @@ The full matrix \(\Phi\) is useful when a method needs derivatives of the flow w
 - Some Newton, sequential-quadratic-programming, and second-order methods;
 - Sensitivity of a full terminal state with respect to a full initial state.
 
+
 For a hybrid event, a first-order perturbation is updated through a saltation matrix or equivalent event derivative:
 
-\[
+
+$$
 \delta x^+
 =
 \Xi\,\delta x^-.
-\]
+$$
+
 
 Consequently,
 
-\[
+
+$$
 \Phi^+
 =
 \Xi\Phi^-.
-\]
+$$
 
-For dense matrices, directly multiplying two \(n\times n\) matrices costs:
 
-\[
+For dense matrices, directly multiplying two $n\times n$ matrices costs:
+
+
+$$
 O(n^3)
-\]
+$$
 
-per event. This is a key distinction: a dense \(O(n^2)\) event update applies to one tangent vector or one adjoint vector, while propagation of the **full** state-transition matrix requires a dense matrix-matrix update.
+
+per event. This is a key distinction: a dense $O(n^2)$ event update applies to one tangent vector or one adjoint vector, while propagation of the **full** state-transition matrix requires a dense matrix-matrix update.
+
 
 #### Directional variational equations
 
+
 Users should not propagate a full state-transition matrix by default.
+
 
 If only one initial-condition direction is needed, propagate one tangent vector:
 
-\[
+
+$$
 v(t)
 =
 \frac{\partial x(t)}{\partial\alpha}
 \in\mathbb{R}^{n},
-\]
+$$
+
 
 which satisfies:
 
-\[
+
+$$
 \dot{v}=J_xv.
-\]
+$$
 
-This requires only \(n\) additional differential equations. At an event:
 
-\[
+This requires only $n$ additional differential equations. At an event:
+
+
+$$
 v^+=\Xi v^-.
-\]
+$$
 
-For dense \(\Xi\), this costs:
 
-\[
+For dense $\Xi$, this costs:
+
+
+$$
 O(n^2)
-\]
+$$
+
 
 per event.
 
-More generally, propagating \(k\) selected tangent directions requires an \(n\times k\) matrix:
 
-\[
+More generally, propagating $k$ selected tangent directions requires an $n\times k$ matrix:
+
+
+$$
 V(t)\in\mathbb{R}^{n\times k},
-\]
+$$
+
 
 with:
 
-\[
+
+$$
 \dot{V}=J_xV.
-\]
+$$
+
 
 The added continuous-state dimension is then:
 
-\[
+
+$$
 nk,
-\]
+$$
+
 
 rather than:
 
-\[
+
+$$
 n^2.
-\]
+$$
+
 
 This is often preferable when only a few perturbation directions, control directions, or shooting-variable directions are needed.
 
+
 ### Forward parameter sensitivities
+
 
 Parameter sensitivities are distinct from the initial-condition state-transition matrix. Define:
 
-\[
+
+$$
 S_\theta(t)
 =
 \frac{\partial x(t)}{\partial\theta}
 \in\mathbb{R}^{n\times p}.
-\]
+$$
+
 
 On smooth intervals, the forward variational equations are:
 
-\[
+
+$$
 \dot{S}_\theta
 =
 J_xS_\theta
 +
 J_\theta,
-\]
+$$
+
 
 where:
 
-\[
+
+$$
 J_\theta
 =
 \frac{\partial f_q}{\partial\theta}
 \in\mathbb{R}^{n\times p}.
-\]
+$$
+
 
 Propagating all forward parameter sensitivities therefore introduces:
 
-\[
+
+$$
 np
-\]
+$$
+
 
 additional scalar differential equations. Together with the original state equations, the augmented system has:
 
-\[
+
+$$
 n+np
 =
 n(1+p)
-\]
+$$
+
 
 continuous scalar states.
+
 
 If both the full initial-condition transition matrix and all parameter sensitivities are required, then the augmented system contains:
 
-\[
+
+$$
 n+n^2+np
-\]
+$$
+
 
 continuous scalar states.
 
+
 #### Dense cost
+
 
 For dense dynamics, evaluation of:
 
-\[
+
+$$
 J_xS_\theta
-\]
+$$
+
 
 costs approximately:
 
-\[
+
+$$
 O(n^2p)
-\]
+$$
+
 
 per variational update. The sensitivity matrix itself requires:
 
-\[
+
+$$
 O(np)
-\]
+$$
+
 
 memory.
 
+
 A rough dense cost model is:
 
-\[
+
+$$
 C_{\mathrm{forward\ sens}}
 \approx
 O\!\left(
@@ -925,49 +1033,64 @@ N(C_f+n^2p)
 +
 m(C_{\mathrm{root}}+C_{\mathrm{reset}}+n^2p)
 \right).
-\]
+$$
+
 
 At an event, the parameter sensitivity update has schematic form:
 
-\[
+
+$$
 S_\theta^+
 =
 \Xi S_\theta^-
 +
 B_{\theta},
-\]
+$$
 
-where \(B_\theta\) contains derivatives associated with explicit parameter dependence in the guard, reset map, or mode transition. It is generally not enough to use only:
 
-\[
+where $B_\theta$ contains derivatives associated with explicit parameter dependence in the guard, reset map, or mode transition. It is generally not enough to use only:
+
+
+$$
 S_\theta^+=\Xi S_\theta^-.
-\]
+$$
 
-For a dense \(n\times p\) sensitivity matrix, the leading matrix multiplication cost at each event is approximately:
 
-\[
+For a dense $n\times p$ sensitivity matrix, the leading matrix multiplication cost at each event is approximately:
+
+
+$$
 O(n^2p).
-\]
+$$
+
 
 #### Sparse and structured models
 
+
 Dense asymptotic estimates can substantially overstate cost when the model is sparse.
 
-Let \(z\) be the number of nonzero entries of \(J_x\). A sparse product may cost closer to:
 
-\[
+Let $z$ be the number of nonzero entries of $J_x$. A sparse product may cost closer to:
+
+
+$$
 O(zp)
-\]
+$$
+
 
 than:
 
-\[
+
+$$
 O(n^2p).
-\]
+$$
+
 
 Similarly, many hybrid resets are local. A dose may alter one compartment; a treatment hold may change one parameter; a contact event may affect a limited subset of velocity components. If event derivatives are sparse, block structured, or low rank, their updates can be much cheaper than dense worst-case formulas imply.
 
+
 For a large model, the useful questions are therefore:
+
 
 - How many state variables are there?
 - How many parameters are differentiated?
@@ -977,17 +1100,23 @@ For a large model, the useful questions are therefore:
 - Is the event update local, sparse, or low rank?
 - Are full matrices required, or only matrix-vector products?
 
+
 #### When forward sensitivities are useful
+
 
 Forward sensitivities are commonly attractive when the parameter count is modest:
 
-\[
+
+$$
 p\ll n,
-\]
+$$
+
 
 or more generally when only a small number of parameters need derivatives.
 
+
 Examples include:
+
 
 - Dose amount, dose interval, or infusion rate;
 - A few PK/PD rate constants;
@@ -996,15 +1125,20 @@ Examples include:
 - An event threshold or reset parameter;
 - Local sensitivity analysis of a calibrated model.
 
+
 Forward methods are also useful during early model development because they can be inspected and compared with carefully selected finite perturbations away from events.
+
 
 ### Saltation-aware hybrid derivatives
 
+
 At an event, classical smooth variational propagation is incomplete because perturbations change event timing.
 
-For a transition from mode \(I\) to mode \(J\), a saltation matrix has schematic form:
 
-\[
+For a transition from mode $I$ to mode $J$, a saltation matrix has schematic form:
+
+
+$$
 \Xi
 =
 D_xR
@@ -1021,43 +1155,56 @@ D_xg
 }{
 D_tg+D_xg\,f_I
 }.
-\]
+$$
+
 
 The exact formula depends on event convention, guard, reset map, and time dependence. The denominator:
 
-\[
+
+$$
 D_tg+D_xg\,f_I
-\]
+$$
+
 
 is the instantaneous rate of crossing the event surface.
 
+
 When that denominator is near zero, the event is near grazing and hybrid sensitivities can become large, ill-conditioned, or undefined in the ordinary differentiable sense.
+
 
 | Carried derivative object | Shape | Event update | Dense direct cost per event |
 |---|---:|---:|---:|
-| One tangent direction \(v\) | \(n\times 1\) | \(v^+=\Xi v^-\) | \(O(n^2)\) |
-| \(k\) tangent directions \(V\) | \(n\times k\) | \(V^+=\Xi V^-\) | \(O(n^2k)\) |
-| Full state-transition matrix \(\Phi\) | \(n\times n\) | \(\Phi^+=\Xi\Phi^-\) | \(O(n^3)\) |
-| Parameter sensitivity matrix \(S_\theta\) | \(n\times p\) | \(S_\theta^+=\Xi S_\theta^-+B_\theta\) | \(O(n^2p)\) |
-| One adjoint vector \(\lambda\) | \(n\times 1\) | \(\lambda^-=\Xi^\top\lambda^+\) | \(O(n^2)\) |
+| One tangent direction $v$ | $n\times 1$ | $v^+=\Xi v^-$ | $O(n^2)$ |
+| $k$ tangent directions $V$ | $n\times k$ | $V^+=\Xi V^-$ | $O(n^2k)$ |
+| Full state-transition matrix $\Phi$ | $n\times n$ | $\Phi^+=\Xi\Phi^-$ | $O(n^3)$ |
+| Parameter sensitivity matrix $S_\theta$ | $n\times p$ | $S_\theta^+=\Xi S_\theta^-+B_\theta$ | $O(n^2p)$ |
+| One adjoint vector $\lambda$ | $n\times 1$ | $\lambda^-=\Xi^\top\lambda^+$ | $O(n^2)$ |
+
 
 These are dense worst-case costs. Sparse, local, low-rank, and matrix-free structures can reduce them substantially.
 
+
 ### Automatic differentiation
+
 
 Automatic differentiation, or AD, is valuable for computing derivatives of smooth right-hand sides, reset maps, objectives, and numerical kernels. It does not automatically guarantee a correct hybrid derivative.
 
+
 For example, an informal branch:
+
 
 ```julia
 if g(x, t) <= 0
-    apply_reset!()
+    apply_reset!()
 end
 ```
 
-does not by itself ensure that differentiation accounts for how a change in \(\theta\) shifts the time when the guard becomes zero.
+
+does not by itself ensure that differentiation accounts for how a change in $\theta$ shifts the time when the guard becomes zero.
+
 
 For state-triggered hybrid events, a correct derivative generally needs:
+
 
 - The smooth derivative before the event;
 - The derivative of the guard;
@@ -1065,22 +1212,28 @@ For state-triggered hybrid events, a correct derivative generally needs:
 - The derivative of the reset map;
 - The vector-field change after the event.
 
-AD may still be part of a correct implementation. For example, it can generate \(J_x\), \(J_\theta\), guard derivatives, reset derivatives, and discrete-adjoint calculations. But it should not be described as a replacement for hybrid sensitivity theory.
+
+AD may still be part of a correct implementation. For example, it can generate $J_x$, $J_\theta$, guard derivatives, reset derivatives, and discrete-adjoint calculations. But it should not be described as a replacement for hybrid sensitivity theory.
+
 
 ### Adjoint sensitivities
 
+
 Suppose the objective is scalar:
 
-\[
+
+$$
 \mathcal{L}
 =
 \ell_T(x(T),\theta)
 +
 \sum_{j=1}^{m}
 \ell_j(x(t_j^-),x(t_j^+),\theta).
-\]
+$$
+
 
 Examples include:
+
 
 - Final tumor burden plus cumulative toxicity;
 - Negative log likelihood of longitudinal data;
@@ -1089,19 +1242,25 @@ Examples include:
 - Total process yield minus operating cost;
 - A control objective with penalties for interventions or mode switches.
 
+
 An adjoint method propagates a vector:
 
-\[
+
+$$
 \lambda(t)\in\mathbb{R}^{n}
-\]
+$$
+
 
 backward through the trajectory.
 
-For a scalar objective, its key advantage is that the active derivative state is \(O(n)\), rather than \(O(np)\). The method does not carry a separate state-sensitivity column for every parameter.
+
+For a scalar objective, its key advantage is that the active derivative state is $O(n)$, rather than $O(np)$. The method does not carry a separate state-sensitivity column for every parameter.
+
 
 A useful planning relation is:
 
-\[
+
+$$
 C_{\mathrm{adjoint}}
 \approx
 \alpha C_{\mathrm{solve}}
@@ -1109,28 +1268,37 @@ C_{\mathrm{adjoint}}
 C_{\mathrm{checkpoint}}
 +
 mC_{\mathrm{event\ adjoint}},
-\]
+$$
+
 
 where:
 
-- \(C_{\mathrm{solve}}\) is the nominal forward-solve cost defined above;
-- \(\alpha\) is a practical constant capturing backward integration, replay, interpolation, and derivative work;
-- \(C_{\mathrm{checkpoint}}\) is memory, storage, or recomputation cost;
-- \(C_{\mathrm{event\ adjoint}}\) is the cost of reverse propagation across each event.
 
-The constant \(\alpha\) is not generally one. Adjoint methods exchange dependence on parameter count for trajectory storage, checkpointing, replay, and event-adjoint complexity.
+- $C_{\mathrm{solve}}$ is the nominal forward-solve cost defined above;
+- $\alpha$ is a practical constant capturing backward integration, replay, interpolation, and derivative work;
+- $C_{\mathrm{checkpoint}}$ is memory, storage, or recomputation cost;
+- $C_{\mathrm{event\ adjoint}}$ is the cost of reverse propagation across each event.
+
+
+The constant $\alpha$ is not generally one. Adjoint methods exchange dependence on parameter count for trajectory storage, checkpointing, replay, and event-adjoint complexity.
+
 
 #### When adjoints are attractive
 
+
 Adjoints are usually attractive when:
 
-\[
+
+$$
 p\gg 1,
-\]
+$$
+
 
 and the objective is scalar or low dimensional.
 
+
 Examples include:
+
 
 - Large parameter-estimation problems;
 - Gradient-based calibration;
@@ -1139,9 +1307,12 @@ Examples include:
 - Neural-network or high-dimensional surrogate parameters;
 - Repeated optimization of a scalar cost.
 
+
 #### Hybrid adjoint requirements
 
+
 A hybrid adjoint must traverse every event correctly in reverse time. It must account for:
+
 
 - Event-time dependence;
 - Reset-map derivatives;
@@ -1153,7 +1324,9 @@ A hybrid adjoint must traverse every event correctly in reverse time. It must ac
 - Checkpointing around discontinuities;
 - Reproducibility of the nominal event sequence.
 
+
 Adjoints may not be the best first method when:
+
 
 - Only a few parameters matter;
 - Events are frequent;
@@ -1164,7 +1337,9 @@ Adjoints may not be the best first method when:
 - The event semantics are still being developed;
 - Reliable debugging matters more than asymptotic speed.
 
+
 A practical progression is:
+
 
 1. Validate the nominal event-driven solve.
 2. Implement and test a small forward or directional sensitivity calculation.
@@ -1172,89 +1347,121 @@ A practical progression is:
 4. Add explicit hybrid event-derivative handling.
 5. Introduce adjoints only when parameter dimension or repeated evaluations justify their added complexity.
 
+
 ### Multiple shooting
+
 
 Single shooting integrates from one initial condition across the full time horizon. It can be effective for short, stable trajectories. It can become poorly conditioned when trajectories are long, unstable, stiff, highly sensitive, or repeatedly reset.
 
-Multiple shooting divides the horizon into \(r\) intervals. Each interval receives its own initial state \(z_j\). The numerical problem enforces continuity or hybrid transition consistency between intervals.
 
-For interval \(j\), let:
+Multiple shooting divides the horizon into $r$ intervals. Each interval receives its own initial state $z_j$. The numerical problem enforces continuity or hybrid transition consistency between intervals.
 
-\[
+
+For interval $j$, let:
+
+
+$$
 x_j(t_j)=z_j,
-\]
+$$
 
-and let \(\varphi_j(z_j,\theta)\) denote the event-aware flow to the end of that interval. A standard continuity constraint is:
 
-\[
+and let $\varphi_j(z_j,\theta)$ denote the event-aware flow to the end of that interval. A standard continuity constraint is:
+
+
+$$
 c_j(z_j,z_{j+1},\theta)
 =
 \varphi_j(z_j,\theta)-z_{j+1}
 =
 0.
-\]
+$$
+
 
 If a known event lies at an interval boundary, the constraint must incorporate the corresponding reset map:
 
-\[
+
+$$
 c_j(z_j,z_{j+1},\theta)
 =
 R_j\left(\varphi_j(z_j,\theta),\theta\right)-z_{j+1}
 =
 0.
-\]
+$$
+
 
 Multiple shooting can improve conditioning because local trajectory errors do not compound unchecked over the entire horizon. It can also expose problematic intervals, support parallel propagation of segments, and provide a natural structure for event-aware optimization.
 
+
 Its costs include additional decision variables, continuity constraints, Jacobian blocks, nonlinear-programming overhead, and more complex handling of events that move across interval boundaries as parameters change.
+
 
 ### Event count, event structure, and tractability
 
+
 Event count matters, but not all events have the same computational cost or scientific risk.
+
 
 #### Scheduled events
 
+
 Scheduled events have known times. Their sequence is usually fixed, and their primary costs are reset execution, solver reinitialization, and derivative propagation through the reset map.
 
-For a model with \(m_s\) scheduled events, repeated monthly doses, planned inspections, or known input changes may be computationally manageable even when \(m_s\) is large, provided the resets are simple and the continuous dynamics are well conditioned.
+
+For a model with $m_s$ scheduled events, repeated monthly doses, planned inspections, or known input changes may be computationally manageable even when $m_s$ is large, provided the resets are simple and the continuous dynamics are well conditioned.
+
 
 #### State-triggered events
 
+
 State-triggered events require guard evaluation and root localization. Their timing and ordering can change with parameters, initial conditions, or controls.
 
-Let \(m_g\) be the number of realized state-triggered events. Their cost is approximately included in:
 
-\[
+Let $m_g$ be the number of realized state-triggered events. Their cost is approximately included in:
+
+
+$$
 m_g C_{\mathrm{root}}.
-\]
+$$
+
 
 But their practical impact may be much larger near grazing, simultaneous crossings, or chattering. A modest number of difficult state-triggered events can be more problematic than many scheduled events.
 
+
 #### Guard count versus realized event count
 
-A model may define many possible guards even if only a few fire during one trajectory. Let \(G\) denote the number of guards checked. Guard evaluation can become nontrivial when:
 
-- \(G\) is large;
+A model may define many possible guards even if only a few fire during one trajectory. Let $G$ denote the number of guards checked. Guard evaluation can become nontrivial when:
+
+
+- $G$ is large;
 - Each guard depends on expensive derived quantities;
 - Guards require communication across distributed components;
 - Many guards become nearly active at once;
 - Root-finding repeatedly evaluates a large guard set.
 
+
 The package should distinguish **defined guards**, **active guards**, and **realized events** in diagnostic output.
+
 
 #### Chattering and Zeno-like behavior
 
+
 A model can generate repeated events in a short interval. Examples include a treatment rule that immediately reactivates after a hold, a relay controller without hysteresis, or a mechanical contact model with repeated impacts.
+
 
 A rough warning sign is a rapidly growing event count:
 
-\[
-m(t+\Delta t)-m(t)\gg 1
-\]
 
-for a very small \(\Delta t\).
+$$
+m(t+\Delta t)-m(t)\gg 1
+$$
+
+
+for a very small $\Delta t$.
+
 
 The package should provide safeguards such as:
+
 
 - Hysteresis recommendations;
 - Minimum dwell times;
@@ -1262,24 +1469,31 @@ The package should provide safeguards such as:
 - Diagnostics for repeated same-time events;
 - Explicit reporting of solver termination due to event pathology.
 
+
 ### Dimension-specific planning guide
+
 
 The following guidance is deliberately approximate. Actual cost depends on stiffness, sparsity, solver choice, event geometry, data volume, objective complexity, and implementation quality.
 
+
 | State dimension | Typical use | Recommended initial strategy | Main risks |
 |---:|---|---|---|
-| \(n < 20\) | Small PK/PD, tumor--immune, control, or teaching models | Direct event-aware simulation; forward sensitivities; finite perturbation checks; small multistart studies | Overconfidence in gradients near event changes; under-tested event semantics |
-| \(20 \leq n < 100\) | Moderate QSP, physiological, engineering, or process models | Exploit sparsity if present; directional sensitivities; selected forward sensitivities; careful solver benchmarking | Dense sensitivity propagation becomes expensive; event logs become harder to inspect manually |
-| \(100 \leq n < 1{,}000\) | Larger QSP, network, discretized, or multicomponent models | Sparse Jacobians; matrix-free products; adjoints for scalar objectives; multiple shooting when needed | Stiffness, memory, event-adjoint complexity, expensive calibration loops |
-| \(n \geq 1{,}000\) | Large networks, spatial discretizations, multiscale or ensemble systems | Sparse/structured methods; reduced-order modeling; surrogate models; HPC or cloud ensembles; avoid full dense matrices | Full \(n^2\) objects become infeasible; dense saltation matrices and full sensitivities are generally not practical |
+| $n < 20$ | Small PK/PD, tumor--immune, control, or teaching models | Direct event-aware simulation; forward sensitivities; finite perturbation checks; small multistart studies | Overconfidence in gradients near event changes; under-tested event semantics |
+| $20 \leq n < 100$ | Moderate QSP, physiological, engineering, or process models | Exploit sparsity if present; directional sensitivities; selected forward sensitivities; careful solver benchmarking | Dense sensitivity propagation becomes expensive; event logs become harder to inspect manually |
+| $100 \leq n < 1{,}000$ | Larger QSP, network, discretized, or multicomponent models | Sparse Jacobians; matrix-free products; adjoints for scalar objectives; multiple shooting when needed | Stiffness, memory, event-adjoint complexity, expensive calibration loops |
+| $n \geq 1{,}000$ | Large networks, spatial discretizations, multiscale or ensemble systems | Sparse/structured methods; reduced-order modeling; surrogate models; HPC or cloud ensembles; avoid full dense matrices | Full $n^2$ objects become infeasible; dense saltation matrices and full sensitivities are generally not practical |
 
-The same table must be interpreted jointly with parameter count \(p\), event count \(m\), and the number of repeated solves required. A 50-state model with 10,000 parameters or 1,000 costly events may be harder than a sparse 500-state model with a handful of parameters and scheduled events.
+
+The same table must be interpreted jointly with parameter count $p$, event count $m$, and the number of repeated solves required. A 50-state model with 10,000 parameters or 1,000 costly events may be harder than a sparse 500-state model with a handful of parameters and scheduled events.
+
 
 ### Fixed-budget planning
 
+
 Before launching a large study, define the available compute budget:
 
-\[
+
+$$
 B_{\mathrm{wall}},
 \qquad
 B_{\mathrm{CPU}},
@@ -1287,27 +1501,34 @@ B_{\mathrm{CPU}},
 B_{\mathrm{memory}},
 \qquad
 B_{\mathrm{cost}}.
-\]
+$$
+
 
 These represent limits on wall-clock time, aggregate CPU or GPU time, memory, and financial cost.
 
-If one evaluation costs approximately \(C_{\mathrm{eval}}\) seconds of compute, then a serial study can perform roughly:
 
-\[
+If one evaluation costs approximately $C_{\mathrm{eval}}$ seconds of compute, then a serial study can perform roughly:
+
+
+$$
 N_{\mathrm{eval}}
 \approx
 \frac{B_{\mathrm{CPU}}}{C_{\mathrm{eval}}}.
-\]
+$$
 
-With \(w\) workers and parallel efficiency \(\eta\in(0,1]\), the wall-clock estimate is:
 
-\[
+With $w$ workers and parallel efficiency $\eta\in(0,1]$, the wall-clock estimate is:
+
+
+$$
 T_{\mathrm{wall}}
 \approx
 \frac{N_{\mathrm{eval}}C_{\mathrm{eval}}}{\eta w}.
-\]
+$$
+
 
 A realistic study must account for:
+
 
 - Initial compilation and environment setup;
 - Failed simulations;
@@ -1317,7 +1538,9 @@ A realistic study must account for:
 - Worker imbalance;
 - Debugging and benchmark time.
 
+
 #### Example planning workflow
+
 
 1. Run a nominal event-aware solve.
 2. Measure elapsed time, allocations, accepted steps, rejected steps, event count, and root-finding diagnostics.
@@ -1326,55 +1549,71 @@ A realistic study must account for:
 5. Estimate the number of solves required by calibration, uncertainty analysis, optimization, or policy search.
 6. Add a contingency factor before provisioning compute.
 
+
 A reasonable early contingency factor may be 2--10x, depending on uncertainty in event behavior and solver robustness.
+
 
 ### Illustrative AWS estimates
 
+
 Cloud costs vary substantially by region, instance type, operating system, pricing model, storage, data transfer, and date. The following examples are planning illustrations rather than current quotes.
+
 
 Suppose a model requires 30 seconds for one event-aware forward solve on one CPU core, and a calibration workflow requires 20,000 solves. The raw serial compute requirement is:
 
-\[
+
+$$
 20{,}000\times 30\ \mathrm{s}
 =
 600{,}000\ \mathrm{s}
 \approx 167\ \mathrm{CPU\ hours}.
-\]
+$$
+
 
 With 32 effective workers and 75% parallel efficiency:
 
-\[
+
+$$
 T_{\mathrm{wall}}
 \approx
 \frac{167}{32\times 0.75}
 \approx 7\ \mathrm{hours}.
-\]
+$$
+
 
 If a particular compute configuration costs, for illustration, \$1.50 per instance-hour and uses four such instances for approximately seven hours, the rough compute charge would be:
 
-\[
+
+$$
 4\times 7\times \$1.50
 =
 \$42.
-\]
+$$
+
 
 This calculation excludes storage, orchestration, data transfer, failed jobs, retries, and the cost of development time. It also assumes the workload parallelizes well.
 
+
 For a gradient-based calibration with an adjoint cost of roughly five forward solves per objective evaluation, the compute demand could rise substantially. If 1,000 optimization iterations each require one objective-and-gradient evaluation, and each costs 150 seconds, then:
 
-\[
+
+$$
 1{,}000\times 150\ \mathrm{s}
 \approx 42\ \mathrm{CPU\ hours}.
-\]
+$$
+
 
 This may still be modest on a cloud cluster, but only if event handling, checkpointing, and adjoint replay are stable. In practice, implementation and validation effort may dominate raw compute cost.
 
+
 ### Benchmark before scaling
+
 
 A package intended for serious hybrid-model workflows should include benchmark cases that vary at least:
 
-- State dimension \(n\);
-- Parameter dimension \(p\);
+
+- State dimension $n$;
+- Parameter dimension $p$;
 - Number of scheduled events;
 - Number and conditioning of state-triggered events;
 - Stiff versus nonstiff dynamics;
@@ -1384,7 +1623,9 @@ A package intended for serious hybrid-model workflows should include benchmark c
 - Single shooting versus multiple shooting;
 - Forward versus adjoint derivative tasks.
 
+
 Each benchmark should report more than wall-clock time. Useful outputs include:
+
 
 - Solver and tolerance configuration;
 - Accepted and rejected steps;
@@ -1395,23 +1636,33 @@ Each benchmark should report more than wall-clock time. Useful outputs include:
 - Failure mode if the solve or derivative calculation is not valid;
 - Hardware and software versions.
 
+
 ### Workflow recommendations
+
 
 For small models, prioritize correctness, interpretability, and derivative validation before optimization.
 
+
 For medium models, exploit structure early: sparse Jacobians, local resets, selected sensitivity directions, and carefully chosen observation models.
+
 
 For large models, avoid default dense formulations. Do not propagate full state-transition matrices or dense parameter-sensitivity matrices unless the problem size demonstrably permits them. Prefer matrix-free products, sparse methods, adjoints for scalar objectives, reduced-order representations, and parallel trajectory ensembles.
 
+
 For all scales, treat the event sequence as a scientific output. A fast optimization result is not useful if it relies on unstable event ordering, unresolved chattering, poorly localized guard crossings, or a model whose intervention logic is not interpretable.
+
 
 ## Opportunities for parallelization
 
+
 Hybrid models offer several forms of parallelism, but event handling changes which strategies are effective. The most reliable parallelism is usually across independent trajectories or independent optimization starts. Parallelizing within one event-rich trajectory is more difficult because each event can depend on the preceding continuous state, event time, and mode.
+
 
 ### Parallelism levels
 
+
 A hybrid-model workflow can often be decomposed at several levels:
+
 
 1. **Across independent parameter sets:** multistart calibration, profile likelihoods, parameter sweeps, and global sensitivity studies.
 2. **Across uncertainty samples:** Monte Carlo trajectories, virtual-patient cohorts, bootstrap replicates, or stochastic realizations.
@@ -1420,27 +1671,35 @@ A hybrid-model workflow can often be decomposed at several levels:
 5. **Within linear algebra kernels:** sparse factorizations, Jacobian-vector products, adjoint operations, and batched neural-network evaluations.
 6. **Across independent models or scenarios:** different mechanisms, disease subtypes, interventions, or data splits.
 
+
 The first three are often embarrassingly parallel and should be the first targets for scaling.
+
 
 ### Embarrassingly parallel trajectory ensembles
 
-Suppose \(M\) independent trajectories must be simulated, each with average cost \(C_{\mathrm{solve}}\). The serial cost is:
 
-\[
+Suppose $M$ independent trajectories must be simulated, each with average cost $C_{\mathrm{solve}}$. The serial cost is:
+
+
+$$
 C_{\mathrm{serial}}
 \approx
 M C_{\mathrm{solve}}.
-\]
+$$
 
-With \(w\) workers and efficiency \(\eta\), the wall time is approximately:
 
-\[
+With $w$ workers and efficiency $\eta$, the wall time is approximately:
+
+
+$$
 T_{\mathrm{wall}}
 \approx
 \frac{M C_{\mathrm{solve}}}{\eta w}.
-\]
+$$
+
 
 Examples include:
+
 
 - Virtual-patient simulations across sampled parameter sets;
 - Dose-response grids;
@@ -1451,13 +1710,18 @@ Examples include:
 - Randomized initial conditions;
 - Independent experimental designs.
 
+
 The main engineering requirements are reproducible random-number streams, structured result collection, failure handling, and logging of event summaries for each trajectory.
+
 
 ### Monte Carlo and uncertainty quantification
 
+
 For uncertainty quantification, each sample may produce a different event sequence. This is scientifically important: uncertainty can change not only continuous outcomes but also whether a treatment hold occurs, which event happens first, or whether a threshold is ever reached.
 
+
 A useful output is therefore not only a distribution of terminal states but also distributions of:
+
 
 - Event counts;
 - Event times;
@@ -1467,11 +1731,15 @@ A useful output is therefore not only a distribution of terminal states but also
 - Constraint violations;
 - Policy switching frequency.
 
+
 Parallel Monte Carlo is usually straightforward, but rare events may require variance-reduction methods, importance sampling, splitting methods, or carefully designed scenario analysis.
+
 
 ### Parallel multistart and population optimization
 
+
 Global optimization and calibration often require many candidate evaluations. These are natural candidates for distributed execution:
+
 
 - Random multistart local optimization;
 - Evolutionary algorithms;
@@ -1482,31 +1750,42 @@ Global optimization and calibration often require many candidate evaluations. Th
 - Profile likelihoods;
 - Parameter grids or Latin-hypercube designs.
 
+
 Hybrid models add a complication: two candidate parameter sets may generate different event sequences, so the objective landscape can be nonsmooth or piecewise smooth. Parallel evaluation remains useful, but optimization diagnostics should record event-sequence changes and solver failures rather than treating all objective evaluations as equivalent.
+
 
 ### Multiple shooting and time-domain decomposition
 
+
 Multiple shooting can expose parallelism because each interval propagation can be performed separately once its interval-initial state is specified. However, the intervals are coupled by continuity constraints and event maps.
 
-For \(r\) intervals, one can evaluate:
 
-\[
+For $r$ intervals, one can evaluate:
+
+
+$$
 \varphi_1(z_1,\theta),
 \ldots,
 \varphi_r(z_r,\theta)
-\]
+$$
+
 
 in parallel, then assemble the continuity constraints.
 
+
 This can be attractive for long trajectories, unstable systems, or parameter-estimation problems with many observation intervals. But event times that move across interval boundaries complicate the formulation. A robust implementation should either:
+
 
 - Place known scheduled events at fixed interval boundaries;
 - Allow event-aware interval propagation with clear ownership rules; or
 - Adaptively redefine intervals while tracking derivative consequences.
 
+
 ### GPU opportunities and limitations
 
+
 GPUs can be useful when a workflow consists of many similar, independent, moderately sized trajectories or large batched neural-network evaluations. Potential applications include:
+
 
 - Large virtual-patient ensembles;
 - Batched surrogate-model evaluation;
@@ -1514,7 +1793,9 @@ GPUs can be useful when a workflow consists of many similar, independent, modera
 - Fixed-step or regularly structured simulation kernels;
 - Large matrix operations arising in learned models.
 
+
 GPU acceleration is less straightforward when:
+
 
 - Each trajectory has a different event count or event sequence;
 - Root finding creates irregular control flow;
@@ -1523,11 +1804,15 @@ GPU acceleration is less straightforward when:
 - The model is small and host-device transfer dominates;
 - Sparse linear algebra is irregular or poorly supported.
 
+
 A practical strategy is often hybrid: run event-rich trajectory orchestration on CPUs while using GPUs for batched smooth computations, neural components, or large ensembles with similar structure.
+
 
 ### AWS Batch and cloud orchestration
 
+
 For large independent workloads, cloud orchestration can separate the scientific model from the execution layer. A typical pattern is:
+
 
 1. Package the Julia environment and model code in a reproducible container.
 2. Define one job input per parameter set, uncertainty sample, policy, or optimization start.
@@ -1536,7 +1821,9 @@ For large independent workloads, cloud orchestration can separate the scientific
 5. Aggregate successful and failed jobs separately.
 6. Reproduce selected runs locally or in a controlled environment.
 
+
 Cloud execution should record:
+
 
 - Git commit or package version;
 - Julia and dependency versions;
@@ -1547,6 +1834,7 @@ Cloud execution should record:
 - Wall time and memory use;
 - Event summary;
 - Failure status and diagnostic output.
+
 
 The package itself need not implement cloud infrastructure in its first version. It should, however, make independent simulations reproducible, serializable, and easy to invoke from scripts or workflow managers.
 
@@ -2050,7 +2338,6 @@ Model-based approaches differ in how they use the predictive model:
 - **World-model methods, such as PlaNet and Dreamer:** learn a compact latent dynamics model and train a policy or value function using imagined rollouts within that learned model.
 - **Hybrid model-based RL:** uses a mechanistic or partially mechanistic hybrid model as the core world model, optionally learning patient-specific parameters, residual dynamics, event probabilities, reward models, and the treatment policy.
 
-
 ## Test beds
 
 The initial test beds should be scientifically recognizable, numerically demanding enough to demonstrate the value of hybrid methods, and small enough to support reproducible end-to-end workflows.
@@ -2065,25 +2352,25 @@ The first flagship biomedical example should be an **immuno-oncology tumor–imm
 
 A representative model can include states for:
 
-\[
+$$
 T(t) = \text{tumor burden},
-\]
+$$
 
-\[
+$$
 E(t) = \text{effector immune-cell activity},
-\]
+$$
 
-\[
+$$
 C(t) = \text{drug concentration},
-\]
+$$
 
-\[
+$$
 B(t) = \text{toxicity or biomarker burden}.
-\]
+$$
 
 Between events, a compact model might have the form
 
-\[
+$$
 \dot{T}
 =
 r_T T
@@ -2092,9 +2379,9 @@ r_T T
 \right)
 -
 k_E E T,
-\]
+$$
 
-\[
+$$
 \dot{E}
 =
 s_E
@@ -2105,15 +2392,15 @@ s_E
 d_E E
 -
 \gamma_E C E,
-\]
+$$
 
-\[
+$$
 \dot{C}
 =
 -k_C C,
-\]
+$$
 
-\[
+$$
 \dot{B}
 =
 \alpha_B C
@@ -2121,37 +2408,37 @@ d_E E
 \beta_B E
 -
 k_B B.
-\]
+$$
 
 This system is only illustrative. The specific biological components can be adjusted as the benchmark is refined. The key point is that the model should contain a treatment-control structure with clinically interpretable events.
 
-For example, at planned dosing times \(t_k\),
+For example, at planned dosing times $t_k$,
 
-\[
+$$
 C(t_k^+)
 =
 C(t_k^-)
 +
 D_k,
-\]
+$$
 
-where \(D_k\) is the administered dose.
+where $D_k$ is the administered dose.
 
 A toxicity hold may be triggered when
 
-\[
+$$
 B(t)
 \geq
 B_{\mathrm{hold}},
-\]
+$$
 
 causing a transition from an active-treatment mode to a hold mode. In the hold mode, scheduled doses are skipped until toxicity falls below a recovery threshold:
 
-\[
+$$
 B(t)
 \leq
 B_{\mathrm{restart}}.
-\]
+$$
 
 The system can therefore have modes such as:
 
@@ -2195,11 +2482,11 @@ A useful second-stage benchmark may involve a higher-dimensional model with two 
 
 For example, a combination-treatment model could include:
 
-\[
+$$
 C_1(t),
 \qquad
 C_2(t),
-\]
+$$
 
 for two drug exposures, along with tumor, immune, and toxicity states. A treatment rule might reduce or stop one agent when toxicity crosses a threshold while allowing the other to continue. Such a model naturally produces hybrid trajectories whose interpretation depends on the timing and ordering of events.
 
@@ -2217,19 +2504,19 @@ Once the deterministic hybrid core is stable, the package can expand toward stoc
 
 A first stochastic extension could add random effects, stochastic forcing, or event-time variability to an otherwise deterministic treatment model. For example, patient-level parameters may be sampled from a distribution:
 
-\[
+$$
 \theta_i
 \sim
 p(\theta \mid \eta_i),
-\]
+$$
 
-where \(i\) indexes a virtual patient and \(\eta_i\) represents patient-specific random effects.
+where $i$ indexes a virtual patient and $\eta_i$ represents patient-specific random effects.
 
 This can be combined with deterministic treatment events and state-triggered treatment logic. The resulting workflow would allow users to ask not only whether a schedule works for a nominal trajectory, but also how robust the schedule is across a population.
 
 A more advanced extension could represent uncertainty in unobserved biology through stochastic differential equations or jump processes:
 
-\[
+$$
 dX_t
 =
 f(X_t,t,\theta)\,dt
@@ -2237,29 +2524,29 @@ f(X_t,t,\theta)\,dt
 g(X_t,t,\theta)\,dW_t
 +
 J(X_{t^-},t,\theta)\,dN_t.
-\]
+$$
 
 The deterministic scheduled intervention structure remains explicit, while stochastic terms represent biological fluctuations, unobserved disturbances, variable adherence, or random clinical events.
 
 Bayesian parameter inference is another natural extension. A modeler may specify priors over mechanistic parameters:
 
-\[
+$$
 p(\theta),
-\]
+$$
 
 combine those with a likelihood for longitudinal observations:
 
-\[
+$$
 p(y \mid \theta),
-\]
+$$
 
 and obtain a posterior distribution:
 
-\[
+$$
 p(\theta \mid y)
 \propto
 p(y \mid \theta)p(\theta).
-\]
+$$
 
 For hybrid models, the likelihood can depend strongly on event timing, treatment holds, threshold crossings, and reset states. Event-aware sensitivities can therefore be useful for gradient-based inference, Laplace approximations, variational methods, or Hamiltonian Monte Carlo workflows.
 
@@ -2271,21 +2558,21 @@ A mathematically focused benchmark should accompany the biomedical examples. One
 
 A Filippov system has different vector fields on different sides of a switching surface. In two dimensions, one may write:
 
-\[
+$$
 \dot{x}
 =
 f^+(x,\mu)
 \qquad \text{when } h(x)>0,
-\]
+$$
 
-\[
+$$
 \dot{x}
 =
 f^-(x,\mu)
 \qquad \text{when } h(x)<0,
-\]
+$$
 
-where \(h(x)=0\) defines the switching boundary and \(\mu\) is a bifurcation parameter.
+where $h(x)=0$ defines the switching boundary and $\mu$ is a bifurcation parameter.
 
 A pseudo-Hopf bifurcation is a nonsmooth analogue of a Hopf-type transition, in which a periodic orbit or related oscillatory behavior arises through the interaction of the vector fields and the switching boundary rather than through the classical smooth-system eigenvalue crossing alone.
 
@@ -2581,9 +2868,9 @@ A reduced postural-control model may contain continuous states for body-segment 
 
 A generic formulation might be:
 
-\[
+$$
 \dot{x}(t)=f_{q(t)}(x(t),u(t),\theta),
-\]
+$$
 
 where the state includes biomechanical and neural-control variables, the input includes visual, vestibular, proprioceptive, tactile, or platform-perturbation signals, and the mode represents stance, stepping, recovery, sensory context, or controller configuration.
 
@@ -2611,17 +2898,17 @@ For example, in closed-loop virtual-reality paradigms, fictive swim output chang
 
 A general state-and-event representation could be written as:
 
-\[
+$$
 \dot{x}(t)=f_{q(t)}\bigl(x(t),u(t),\theta\bigr),
-\]
+$$
 
-where \(x(t)\) represents a reduced neural-behavioral state, \(u(t)\) represents sensory input or experimental drive, \(\theta\) contains physiological and control parameters, and \(q(t)\) identifies an active behavioral or experimental mode. At an event condition \(g_i(x,t)=0\), the mode and state could change through:
+where $x(t)$ represents a reduced neural-behavioral state, $u(t)$ represents sensory input or experimental drive, $\theta$ contains physiological and control parameters, and $q(t)$ identifies an active behavioral or experimental mode. At an event condition $g_i(x,t)=0$, the mode and state could change through:
 
-\[
+$$
 x^+=R_i(x^-,\theta),
 \qquad
 q^+=T_i(q^-,x^-).
-\]
+$$
 
 The important scientific question is whether a proposed state, guard, or reset corresponds to experimentally observable quantities and predicts data not used for fitting.
 
@@ -2629,37 +2916,37 @@ Motor-adaptation experiments with altered visual feedback in a closed-loop virtu
 
 Brain-wide sensorimotor-transformation experiments suggest a modular architecture that separates sensory encoding, intermediate sensorimotor transformation, motor command, and locomotor output. A reduced hybrid model should not equate correlation with instantaneous motor output to causal motor command. It could instead compare feedforward sensory-to-motor mapping, recurrent state estimation, or state-dependent action-selection architectures against data obtained under multiple visual-feedback conditions.
 
-Behavioral-state switching after unsuccessful action is an especially direct candidate for a threshold model. A stylized hypothesis could include a continuous variable \(e(t)\) representing accumulated evidence that action is futile:
+Behavioral-state switching after unsuccessful action is an especially direct candidate for a threshold model. A stylized hypothesis could include a continuous variable $e(t)$ representing accumulated evidence that action is futile:
 
-\[
+$$
 \dot{e}(t)=-\lambda e(t)
-\]
+$$
 
 between swimming events, with a discrete update after an unsuccessful bout:
 
-\[
+$$
 e^+=e^-+\alpha.
-\]
+$$
 
 A threshold condition could define a transition from an active mode to a suppressed or passive behavioral mode:
 
-\[
+$$
 q^+=\mathrm{passive}
 \quad\text{when}\quad
 e(t)\geq\vartheta.
-\]
+$$
 
-This is a stylized hypothesis, not a claim that the biological system follows this exact equation. Its value would be to make assumptions about integration, decay, thresholding, and recovery explicit and quantitatively testable against behavioral and neural/glial data. Competing models could use nonlinear accumulation, state-dependent thresholds, stochastic event effects, adaptation of \(\alpha\), or an additional latent arousal state.
+This is a stylized hypothesis, not a claim that the biological system follows this exact equation. Its value would be to make assumptions about integration, decay, thresholding, and recovery explicit and quantitatively testable against behavioral and neural/glial data. Competing models could use nonlinear accumulation, state-dependent thresholds, stochastic event effects, adaptation of $\alpha$, or an additional latent arousal state.
 
 Work on self-location memory and positional homeostasis provides another natural control-theoretic example. A model could include an internal self-location estimate:
 
-\[
+$$
 \dot{\hat{p}}(t)=v_{\mathrm{self}}(t),
 \qquad
 e_p(t)=p_{\mathrm{reference}}-\hat{p}(t),
-\]
+$$
 
-where \(\hat{p}(t)\) is an internal position estimate and \(e_p(t)\) is a position error. An imposed displacement can be represented as a reset or perturbation to physical position, sensory input, internal estimate, or some combination, depending on the mechanistic hypothesis. Corrective swim-bout probability, direction, vigor, or termination could be modeled as a state-dependent event policy.
+where $\hat{p}(t)$ is an internal position estimate and $e_p(t)$ is a position error. An imposed displacement can be represented as a reset or perturbation to physical position, sensory input, internal estimate, or some combination, depending on the mechanistic hypothesis. Corrective swim-bout probability, direction, vigor, or termination could be modeled as a state-dependent event policy.
 
 Potential uses of `hybrid-ds-julia` in this setting include:
 
@@ -2693,23 +2980,23 @@ The intended role for `hybrid-ds-julia` would be complementary to established ro
 
 A generic reduced-order formulation might be:
 
-\[
+$$
 \dot{x}(t)=f_{q(t)}\bigl(x(t),u(t),\theta\bigr),
-\]
+$$
 
-where \(x(t)\) contains mechanical, sensory, neural, controller, or estimator states; \(u(t)\) denotes external forcing or measured sensory input; \(\theta\) contains plant, controller, and measurement parameters; and \(q(t)\) denotes an active contact, gait, behavioral, or controller mode. An event may be defined by:
+where $x(t)$ contains mechanical, sensory, neural, controller, or estimator states; $u(t)$ denotes external forcing or measured sensory input; $\theta$ contains plant, controller, and measurement parameters; and $q(t)$ denotes an active contact, gait, behavioral, or controller mode. An event may be defined by:
 
-\[
+$$
 g_i(x,t,\theta)=0,
-\]
+$$
 
 with a state and mode update:
 
-\[
+$$
 x^+=R_i(x^-,\theta),
 \qquad
 q^+=T_i(q^-,x^-).
-\]
+$$
 
 The technical value of this representation is that event conditions and event maps are first-class model components rather than informal post-processing logic. It permits a modeler to ask how conclusions change when an impact occurs earlier or later, when a sensory threshold is crossed, when an actuator saturates, when a controller switches, or when an experiment introduces a perturbation.
 
@@ -2728,9 +3015,7 @@ Potential uses of `hybrid-ds-julia` in this research area include:
 - Optimization of constrained controller, sensing, or perturbation policies
 - Reproducible compact examples that expose equations, events, assumptions, and diagnostics directly
 
-Hybrid sensitivity requires special care. In a smooth ODE model, sensitivities can be obtained by integrating variational equations. In a hybrid model, a parameter perturbation can also change the time at which an event occurs and the post-event state. A correct first-order calculation must therefore account for both continuous evolution and event-induced variation, for example through a saltation-matrix or equivalent reset-aware update.
-
-The most important questions for the LIMBS Laboratory are concrete:
+Hybrid sensitivity requires special care. In a smooth ODE model, sensitivities can be obtained by integrating variational equations. In a hybrid model, a parameter perturbation can also change the time at which an event occurs and the post-event state. A correct first-order calculation must therefore account for both continuous evolution and event-induced variation, for example through a saltation-matrix or equivalent reset-aware update. The most important questions for the LIMBS Laboratory are concrete:
 
 1. Which research models would benefit from an explicit ODE-plus-guard-plus-reset interface rather than an existing multibody, control, or identification workflow?
 2. Are there scientifically useful reduced-order examples in locomotion, active sensing, or experimental perturbation for which event-time sensitivity is central?
@@ -2748,25 +3033,25 @@ The potential relevance of `hybrid-ds-julia` is strongest where a model must rep
 
 A generic closed-loop formulation might separate plant, controller, and sensory dynamics:
 
-\[
+$$
 \dot{x}_p=f_p(x_p,u,\theta_p),
-\]
+$$
 
-\[
+$$
 \dot{x}_c=f_c(x_c,y,\theta_c),
-\]
+$$
 
-\[
+$$
 u=\pi_{q(t)}(x_c,y,\theta_\pi),
-\]
+$$
 
-where \(x_p\) represents locomotor plant state, \(x_c\) represents internal controller or estimator state, \(y\) represents sensory input, and \(q(t)\) represents a behavioral or experimental mode. The sensory signal may depend on both animal motion and environment:
+where $x_p$ represents locomotor plant state, $x_c$ represents internal controller or estimator state, $y$ represents sensory input, and $q(t)$ represents a behavioral or experimental mode. The sensory signal may depend on both animal motion and environment:
 
-\[
+$$
 y(t)=h\bigl(x_p(t),r(t),\theta_s\bigr)+\eta(t),
-\]
+$$
 
-where \(r(t)\) is refuge or environmental motion and \(\eta(t)\) represents sensory or measurement noise.
+where $r(t)$ is refuge or environmental motion and $\eta(t)$ represents sensory or measurement noise.
 
 A hybrid extension can represent events such as:
 
@@ -2783,14 +3068,14 @@ Research on the critical role of locomotion mechanics in decoding sensory system
 
 This would allow investigators to test which conclusions depend on plant dynamics, controller dynamics, sensory delay, feedback gain, or stimulus structure. An experiment could compare modes such as:
 
-\[
+$$
 q\in\{
 \mathrm{predictable},
 \mathrm{unpredictable},
 \mathrm{sensory\ cue\ available},
 \mathrm{sensory\ cue\ absent}
 \},
-\]
+$$
 
 with each mode selecting a different controller gain, estimator gain, delay, noise level, or active-sensing policy.
 
@@ -2798,7 +3083,7 @@ The point would not be to infer an unobserved controller from a small dataset wi
 
 Work on sensorimotor adaptation to destabilizing dynamics is particularly suitable for this kind of model. A gradual or abrupt change in the relation between fish movement and sensory consequences can be represented as a parameter change in the plant, sensory environment, or closed-loop feedback pathway. The model could compare competing explanations:
 
-\[
+$$
 \text{plant adaptation},
 \qquad
 \text{controller-gain adaptation},
@@ -2806,7 +3091,7 @@ Work on sensorimotor adaptation to destabilizing dynamics is particularly suitab
 \text{state-estimator adaptation},
 \qquad
 \text{mode switching},
-\]
+$$
 
 or combinations of these mechanisms.
 
@@ -2853,13 +3138,11 @@ In that role, the package might serve as:
 
 A reduced-order hybrid neural system could be written as:
 
-\[
+$$
 \dot{x}(t)=f_{q(t)}\bigl(x(t),I(t),p(t),\theta\bigr),
-\]
+$$
 
-where \(x(t)\) includes neural, synaptic, network, cellular, behavioral, or physiological states; \(I(t)\) is stimulation or synaptic drive; \(p(t)\) represents intervention or protocol state; \(\theta\) contains biophysical or phenomenological parameters; and \(q(t)\) selects an active treatment, stimulation, behavioral, or experimental mode.
-
-Events might include:
+where $x(t)$ includes neural, synaptic, network, cellular, behavioral, or physiological states; $I(t)$ is stimulation or synaptic drive; $p(t)$ represents intervention or protocol state; $\theta$ contains biophysical or phenomenological parameters; and $q(t)$ selects an active treatment, stimulation, behavioral, or experimental mode. Events might include:
 
 - Current-pulse onset, offset, amplitude change, or waveform change
 - Synaptic input, spike detection, or network event
@@ -2877,7 +3160,7 @@ First, the package should not make generic claims such as “NEURON cannot model
 
 Second, any proposed complementarity must identify a genuinely distinct use case. A plausible distinction is between an event internal to a detailed neural-network simulation and an event that changes the governing model at the system or experimental-policy level:
 
-\[
+$$
 \text{neural dynamics}
 \longrightarrow
 \text{estimated biomarker}
@@ -2887,21 +3170,21 @@ Second, any proposed complementarity must identify a genuinely distinct use case
 \text{changed stimulation protocol}
 \longrightarrow
 \text{future neural and behavioral dynamics}.
-\]
+$$
 
 A model of this form might combine a low-dimensional neural state, a behavioral state, a measurement process, an estimator, and a thresholded controller. The hybrid framework would make a decision rule explicit:
 
-\[
+$$
 \text{apply stimulation if }\hat{z}(t)\geq z_{\mathrm{threshold}},
-\]
+$$
 
 or:
 
-\[
+$$
 \text{change mode if}
 \int_{t-T}^{t}\phi(x(s))\,ds
 \geq\Theta.
-\]
+$$
 
 Such a model could be useful for studying assumptions in adaptive stimulation, experimental design, neuroprosthetic control, pharmacological intervention, or neural-behavioral coupling. It is not a substitute for detailed cellular simulation when morphology, spatial ion dynamics, dendritic integration, channel kinetics, or network connectivity are essential to the scientific question.
 
@@ -2950,13 +3233,13 @@ In such settings, a model can often represent observable parts of the chain:
 
 The difficult step is causal identification: determining which latent continuous state generated the observations, how that state changes over time, and whether an intervention caused a subsequent change. A model may fit observed trajectories while assigning them to the wrong mechanism.
 
-More formally, if \(y(t)\) is an observed symptom or function score, it may depend on several partially unobserved processes:
+More formally, if $y(t)$ is an observed symptom or function score, it may depend on several partially unobserved processes:
 
-\[
+$$
 y(t)=f_1(x_1(t))+f_2(x_2(t))+\cdots+f_k(x_k(t))+\epsilon(t).
-\]
+$$
 
-When the relevant \(x_i(t)\) are poorly measured, nonunique, or causally confounded, fitting a model to \(y(t)\) does not establish which process is responsible. This is a limitation of measurement and causal identifiability, not a judgment about the legitimacy or severity of any illness.
+When the relevant $x_i(t)$ are poorly measured, nonunique, or causally confounded, fitting a model to $y(t)$ does not establish which process is responsible. This is a limitation of measurement and causal identifiability, not a judgment about the legitimacy or severity of any illness.
 
 ### Some infectious and post-infectious conditions
 
@@ -3041,33 +3324,33 @@ A clinically relevant question is not only whether a nominal dose reduces tumor 
 
 With event-aware simulation, the model can represent the full treatment logic directly:
 
-\[
+$$
 C(t_k^+)
 =
 C(t_k^-)
 +
 D_k
-\]
+$$
 
 at planned dose times, together with threshold-triggered treatment holds such as
 
-\[
+$$
 B(t)
 \geq
 B_{\mathrm{hold}}
 \quad \Longrightarrow \quad
 \text{hold treatment}.
-\]
+$$
 
 If toxicity subsequently recovers,
 
-\[
+$$
 B(t)
 \leq
 B_{\mathrm{restart}}
 \quad \Longrightarrow \quad
 \text{restart or reduce treatment}.
-\]
+$$
 
 The resulting trajectory can be analyzed with respect to dose size, dose interval, treatment-hold thresholds, restart thresholds, and patient-specific parameter variation.
 
@@ -3141,21 +3424,21 @@ A hybrid QSP model can make those differences visible at the regimen level.
 
 Suppose a compound-specific parameter vector is written as
 
-\[
+$$
 \theta_j,
-\]
+$$
 
-where \(j\) indexes candidate compounds. The model may then produce an outcome map
+where $j$ indexes candidate compounds. The model may then produce an outcome map
 
-\[
+$$
 \mathcal{O}(\theta_j, D, \tau, \pi),
-\]
+$$
 
 where:
 
-- \(D\) represents dose,
-- \(\tau\) represents schedule timing,
-- and \(\pi\) represents a treatment policy, such as a toxicity-hold or restart rule.
+- $D$ represents dose,
+- $\tau$ represents schedule timing,
+- and $\pi$ represents a treatment policy, such as a toxicity-hold or restart rule.
 
 The outcome may include tumor control, biomarker suppression, cumulative exposure, time in toxicity hold, relapse probability, or time to progression.
 
@@ -3173,9 +3456,9 @@ This provides a way to connect compound properties to decision-relevant dynamica
 
 Autoimmune and inflammatory disease models often have flare-remission behavior, delayed response, treatment tapering, rescue therapy, and biomarker-based adjustment. These features make them natural applications for hybrid dynamical-systems methods.
 
-A conceptual model might include inflammatory activity \(I\), regulatory immune activity \(R\), drug exposure \(C\), and a toxicity or adverse-effect burden \(B\):
+A conceptual model might include inflammatory activity $I$, regulatory immune activity $R$, drug exposure $C$, and a toxicity or adverse-effect burden $B$:
 
-\[
+$$
 \dot{I}
 =
 \alpha_I I
@@ -3183,9 +3466,9 @@ A conceptual model might include inflammatory activity \(I\), regulatory immune 
 k_R R I
 -
 k_C C I,
-\]
+$$
 
-\[
+$$
 \dot{R}
 =
 s_R
@@ -3193,41 +3476,41 @@ s_R
 d_R R
 +
 \eta_C C,
-\]
+$$
 
-\[
+$$
 \dot{C}
 =
 -k_C^{\mathrm{elim}}C,
-\]
+$$
 
-\[
+$$
 \dot{B}
 =
 \alpha_B C
 -
 k_B B.
-\]
+$$
 
 A treatment policy may initiate rescue therapy during a flare:
 
-\[
+$$
 I(t)
 \geq
 I_{\mathrm{flare}}
 \quad \Longrightarrow \quad
 \text{administer rescue treatment},
-\]
+$$
 
 or taper treatment when disease activity remains controlled:
 
-\[
+$$
 I(t)
 \leq
 I_{\mathrm{control}}
 \quad \Longrightarrow \quad
 \text{reduce maintenance treatment}.
-\]
+$$
 
 The model can then be used to study:
 
@@ -3247,7 +3530,7 @@ A crop-growth system may include biomass, water availability, nutrient status, c
 
 For example, a precision-irrigation policy could apply water when soil moisture falls below a threshold:
 
-\[
+$$
 M(t)
 \leq
 M_{\mathrm{threshold}}
@@ -3257,11 +3540,11 @@ M(t^+)
 M(t^-)
 +
 \Delta M.
-\]
+$$
 
 A nutrient-management policy could apply fertilizer after a sensor-derived nutrient variable falls below a specified level:
 
-\[
+$$
 N(t)
 \leq
 N_{\mathrm{threshold}}
@@ -3271,7 +3554,7 @@ N(t^+)
 N(t^-)
 +
 \Delta N.
-\]
+$$
 
 The hybrid model can then be used to compare:
 
@@ -3302,9 +3585,9 @@ Examples include:
 
 A crop model may represent biomass accumulation, canopy development, competition for light, water uptake, nutrient dynamics, and reproductive allocation as continuous processes. Yet the outcomes of practical interest—yield, resilience, resource efficiency, and trait value—may depend strongly on the timing of discrete interventions.
 
-For example, a plant-growth model may include biomass \(W\), leaf area or canopy state \(L\), soil-water availability \(M\), and nutrient availability \(N\):
+For example, a plant-growth model may include biomass $W$, leaf area or canopy state $L$, soil-water availability $M$, and nutrient availability $N$:
 
-\[
+$$
 \dot{W}
 =
 \alpha L
@@ -3312,17 +3595,17 @@ For example, a plant-growth model may include biomass \(W\), leaf area or canopy
 \frac{N}{K_N+N}
 -
 \delta_W W,
-\]
+$$
 
-\[
+$$
 \dot{L}
 =
 g_L(W,L)
 -
 \delta_L L,
-\]
+$$
 
-\[
+$$
 \dot{M}
 =
 I(t)
@@ -3330,9 +3613,9 @@ I(t)
 u_M(W,L,M)
 -
 \ell_M(M),
-\]
+$$
 
-\[
+$$
 \dot{N}
 =
 F(t)
@@ -3340,33 +3623,33 @@ F(t)
 u_N(W,L,N)
 -
 \ell_N(N).
-\]
+$$
 
-Here, \(I(t)\) and \(F(t)\) may include irrigation and fertilizer interventions. At selected event times, the model may apply impulsive updates:
+Here, $I(t)$ and $F(t)$ may include irrigation and fertilizer interventions. At selected event times, the model may apply impulsive updates:
 
-\[
+$$
 M(t_k^+)
 =
 M(t_k^-)
 +
 \Delta M_k,
-\]
+$$
 
-\[
+$$
 N(t_k^+)
 =
 N(t_k^-)
 +
 \Delta N_k.
-\]
+$$
 
 The system can also include state-triggered rules. For example, irrigation may occur when soil moisture crosses a lower threshold:
 
-\[
+$$
 M(t)
 \leq
 M_{\mathrm{trigger}}.
-\]
+$$
 
 In a more advanced setting, the intervention policy may depend on developmental stage, weather forecasts, crop stress indicators, or competing resource constraints.
 
@@ -3397,7 +3680,7 @@ The intended design principles are:
 
 A possible early API could allow users to define:
 
-\[
+$$
 \mathcal{H}
 =
 \{
@@ -3407,195 +3690,15 @@ h_{q\rightarrow q'},
 R_{q\rightarrow q'},
 \mathcal{E}_{\mathrm{scheduled}}
 \},
-\]
+$$
 
 where:
 
-- \(\mathcal{Q}\) is a set of modes,
-- \(f_q\) is the continuous vector field in mode \(q\),
-- \(h_{q\rightarrow q'}\) is an event or guard function,
-- \(R_{q\rightarrow q'}\) is a reset map,
-- and \(\mathcal{E}_{\mathrm{scheduled}}\) contains scheduled intervention events.
-
-A modeler should be able to specify a system in terms close to the scientific problem:
-
-- what states evolve continuously,
-- what interventions occur at fixed times,
-- what thresholds trigger a transition,
-- how the state changes at each event,
-- and what outcomes should be optimized or analyzed.
-
-The package can then construct the numerical machinery required for simulation and sensitivity propagation.
-
-The first user-facing capabilities should include:
-
-- deterministic simulation of hybrid ODE models,
-- scheduled event handling,
-- state-triggered event detection,
-- reset maps and mode transitions,
-- continuous variational equations between events,
-- saltation or jump-sensitivity updates at events,
-- trajectory diagnostics,
-- and simple multiple-shooting formulations.
-
-The first examples should prioritize clarity over biological scope. A user should be able to inspect a compact model, run a schedule comparison, visualize event times, compute sensitivities, and understand why the event-aware method differs from a finite-difference perturbation workflow.
-
-Potential supporting components include:
-
-- data structures for modes, events, guards, reset maps, and scheduled interventions,
-- wrappers around standard Julia ODE and callback functionality,
-- utilities for propagating state-transition and parameter-sensitivity matrices,
-- multiple-shooting problem construction,
-- continuation or parameter-sweep helpers,
-- plotting utilities for trajectories, event times, modes, and sensitivity diagnostics,
-- and benchmark scripts that compare hybrid-aware derivatives with finite-difference approximations.
-
-The design should remain modular. A modeler interested only in accurate simulation should not be required to use multiple shooting. A user interested in schedule optimization should be able to build on the same event abstractions without rewriting the model. Future AI, Bayesian, and stochastic extensions should reuse the same representation of known scheduled events, state-triggered transitions, and reset maps.
-
-Interoperability is also an important longer-term design goal. Many QSP and PK/PD models already exist in established ecosystems, and their value should not be lost when hybrid analysis is needed. The package should eventually support import, export, or translation pathways for model structures and dosing/event specifications associated with tools such as NONMEM, nlmixr2/RxODE, Pumas, and related pharmacometric workflows.
-
-The package does not need to solve every interoperability problem in its first release. An initial milestone could focus on clear, documented pathways for recreating a limited class of models or event schedules. Later stages can expand toward more automated translation, validation against reference simulations, and bidirectional exchange of model definitions or simulation outputs.
-
-The immediate objective is to demonstrate a complete and credible workflow, not to maximize feature count:
-
-1. Define a hybrid mechanistic model.
-2. Simulate it accurately across scheduled and state-triggered events.
-3. Propagate sensitivities through those events.
-4. Use the resulting derivatives in schedule, parameter, or boundary-value analysis.
-5. Compare the results with simpler finite-difference or single-shooting approaches.
-6. Document where hybrid-aware methods materially improve reliability, conditioning, or interpretability.
-
-## Original crop-science motivation
-
-The project originally grew from an interest in crop-growth, canopy-competition, and trait-optimization models. That motivation remains relevant because plant and crop systems often combine smooth biological growth processes with discrete environmental and management events.
-
-Examples include:
-
-- planting and harvest dates,
-- irrigation and fertilization pulses,
-- pruning and thinning,
-- pest-control interventions,
-- greenhouse temperature or light schedules,
-- drought and heat-stress events,
-- developmental-stage transitions,
-- and sensor-triggered management decisions.
-
-A crop model may represent biomass accumulation, canopy development, competition for light, water uptake, nutrient dynamics, and reproductive allocation as continuous processes. Yet the outcomes of practical interest—yield, resilience, resource efficiency, and trait value—may depend strongly on the timing of discrete interventions.
-
-For example, a plant-growth model may include biomass \(W\), leaf area or canopy state \(L\), soil-water availability \(M\), and nutrient availability \(N\):
-
-\[
-\dot{W}
-=
-\alpha L
-\frac{M}{K_M+M}
-\frac{N}{K_N+N}
--
-\delta_W W,
-\]
-
-\[
-\dot{L}
-=
-g_L(W,L)
--
-\delta_L L,
-\]
-
-\[
-\dot{M}
-=
-I(t)
--
-u_M(W,L,M)
--
-\ell_M(M),
-\]
-
-\[
-\dot{N}
-=
-F(t)
--
-u_N(W,L,N)
--
-\ell_N(N).
-\]
-
-Here, \(I(t)\) and \(F(t)\) may include irrigation and fertilizer interventions. At selected event times, the model may apply impulsive updates:
-
-\[
-M(t_k^+)
-=
-M(t_k^-)
-+
-\Delta M_k,
-\]
-
-\[
-N(t_k^+)
-=
-N(t_k^-)
-+
-\Delta N_k.
-\]
-
-The system can also include state-triggered rules. For example, irrigation may occur when soil moisture crosses a lower threshold:
-
-\[
-M(t)
-\leq
-M_{\mathrm{trigger}}.
-\]
-
-In a more advanced setting, the intervention policy may depend on developmental stage, weather forecasts, crop stress indicators, or competing resource constraints.
-
-This type of model is structurally similar to the QSP and PK/PD systems emphasized elsewhere in the repository:
-
-- continuous states evolve according to mechanistic differential equations,
-- scheduled interventions introduce jumps or changes in forcing,
-- threshold conditions trigger mode changes,
-- and the timing of events affects long-term outcomes.
-
-The crop-science examples remain useful because they provide intuitive applications for multiple shooting, event-aware sensitivities, and optimization. A crop-management problem can be stated in terms of measurable outcomes such as yield, water use, fertilizer efficiency, or resilience to stress, while still presenting the same numerical challenges that appear in treatment-schedule optimization.
-
-## Software plan
-
-The initial software plan is deliberately narrow. The package should establish a reliable deterministic hybrid core before expanding toward broad model coverage, sophisticated inference, or AI-enabled extensions.
-
-The first implementation should build on Julia’s existing scientific-computing ecosystem rather than recreating solver infrastructure. The package should focus on reusable abstractions for hybrid model specification, event-aware sensitivity propagation, shooting formulations, and user-facing analysis workflows.
-
-The intended design principles are:
-
-- preserve compatibility with existing Julia differential-equation tooling where practical,
-- represent event logic explicitly rather than burying it inside ad hoc callbacks,
-- distinguish scheduled events from state-triggered events,
-- support reset maps and mode changes as first-class model components,
-- expose event-aware sensitivities in a form suitable for optimization and inference,
-- provide clear diagnostics when trajectories approach grazing or ill-conditioned event configurations,
-- and make examples reproducible enough to serve as scientific benchmarks.
-
-A possible early API could allow users to define:
-
-\[
-\mathcal{H}
-=
-\{
-\mathcal{Q},
-f_q,
-h_{q\rightarrow q'},
-R_{q\rightarrow q'},
-\mathcal{E}_{\mathrm{scheduled}}
-\},
-\]
-
-where:
-
-- \(\mathcal{Q}\) is a set of modes,
-- \(f_q\) is the continuous vector field in mode \(q\),
-- \(h_{q\rightarrow q'}\) is an event or guard function,
-- \(R_{q\rightarrow q'}\) is a reset map,
-- and \(\mathcal{E}_{\mathrm{scheduled}}\) contains scheduled intervention events.
+- $\mathcal{Q}$ is a set of modes,
+- $f_q$ is the continuous vector field in mode $q$,
+- $h_{q\rightarrow q'}$ is an event or guard function,
+- $R_{q\rightarrow q'}$ is a reset map,
+- and $\mathcal{E}_{\mathrm{scheduled}}$ contains scheduled intervention events.
 
 A modeler should be able to specify a system in terms close to the scientific problem:
 

@@ -29,12 +29,12 @@ $$
 
 where:
 
-- \(x\) is the mechanistic state;
-- \(f_{\mathrm{mech}}\) is the known mechanistic model;
-- \(u\) denotes interventions such as dose, schedule, or treatment state;
-- \(f_{\mathrm{NN}}\) is a learned neural correction;
-- \(\theta\) contains mechanistic parameters; and
-- \(\phi\) contains neural-network parameters.
+- $x$ is the mechanistic state;
+- $f_{\mathrm{mech}}$ is the known mechanistic model;
+- $u$ denotes interventions such as dose, schedule, or treatment state;
+- $f_{\mathrm{NN}}$ is a learned neural correction;
+- $\theta$ contains mechanistic parameters; and
+- $\phi$ contains neural-network parameters.
 
 For QSP and PK/PD, the mechanistic component may describe drug disposition, receptor occupancy, tumor growth, immune-cell dynamics, cytokine production, or toxicity pathways. The neural component can then represent a partially known feedback mechanism, an omitted mediator, a context-dependent interaction, or a structured discrepancy between the mechanistic model and observed data.
 
@@ -50,7 +50,7 @@ f_i(x,t,\theta)
 f_{\mathrm{NN},i}(x,t,u,\phi),
 $$
 
-where \(i\) identifies the current treatment mode. For example, one learned correction may apply during active therapy, another during a treatment holiday, and another after a toxicity-driven hold.
+where $i$ identifies the current treatment mode. For example, one learned correction may apply during active therapy, another during a treatment holiday, and another after a toxicity-driven hold.
 
 The role of `hybrid-ds-julia` would be to ensure that the learned and mechanistic components both participate in event-aware simulation and sensitivity analysis. A neural correction should not obscure the fact that the treatment rule itself is hybrid. If a toxicity threshold is crossed, the resulting hold or switch must still be represented by an explicit event surface and reset or mode-transition map.
 
@@ -101,10 +101,10 @@ $$
 
 where:
 
-- \(\mathcal{L}_{\mathrm{data}}\) measures agreement with observations;
-- \(\mathcal{L}_{\mathrm{ODE}}\) penalizes violations of the continuous governing equations;
-- \(\mathcal{L}_{\mathrm{IC}}\) enforces initial or boundary conditions; and
-- \(\mathcal{L}_{\mathrm{event}}\) enforces jump, reset, or mode-transition conditions.
+- $\mathcal{L}_{\mathrm{data}}$ measures agreement with observations;
+- $\mathcal{L}_{\mathrm{ODE}}$ penalizes violations of the continuous governing equations;
+- $\mathcal{L}_{\mathrm{IC}}$ enforces initial or boundary conditions; and
+- $\mathcal{L}_{\mathrm{event}}$ enforces jump, reset, or mode-transition conditions.
 
 For hybrid QSP and PK/PD systems, the final term is essential. A model that learns a smooth trajectory through a bolus dose, treatment hold, threshold-triggered switch, or state reset may appear numerically adequate while failing to preserve the actual intervention logic that matters for interpretation and decision-making.
 
@@ -114,7 +114,7 @@ $$
 \hat{x}_1(t), \hat{x}_2(t), \ldots, \hat{x}_m(t),
 $$
 
-with matching conditions at event times. If an event occurs at time \(\tau_k\), the training loss can include:
+with matching conditions at event times. If an event occurs at time $\tau_k$, the training loss can include:
 
 $$
 \hat{x}_{k+1}(\tau_k^+)
@@ -210,9 +210,7 @@ For translational pharmacology, the discrete modes could represent clinically in
 - Relapse management; or
 - Post-progression treatment.
 
-A neural component could then be used to learn which latent physiological conditions make a transition likely, which modes best describe observed treatment-response patterns, or how the continuous dynamics differ between modes.
-
-For example, longitudinal real-world data may show that patients with apparently similar baseline covariates follow different toxicity and recovery trajectories after treatment interruption. A neural hybrid automaton could be used to learn whether those trajectories are better represented by distinct latent modes, while retaining explicit treatment rules and biologically interpretable state variables. The advantage of this approach is that it can combine data-driven discovery with a model structure that remains aligned with actual treatment logic. Rather than learning an unrestricted recurrent predictor, the model still distinguishes continuous evolution from discrete decisions and regime changes.
+A neural component could then be used to learn which latent physiological conditions make a transition likely, which modes best describe observed treatment-response patterns, or how the continuous dynamics differ between modes. For example, longitudinal real-world data may show that patients with apparently similar baseline covariates follow different toxicity and recovery trajectories after treatment interruption. A neural hybrid automaton could be used to learn whether those trajectories are better represented by distinct latent modes, while retaining explicit treatment rules and biologically interpretable state variables. The advantage of this approach is that it can combine data-driven discovery with a model structure that remains aligned with actual treatment logic. Rather than learning an unrestricted recurrent predictor, the model still distinguishes continuous evolution from discrete decisions and regime changes.
 
 The risks are substantial. Mode discovery can be non-identifiable; different combinations of modes, guards, and reset maps may fit the same data. In addition, a learned transition rule may be difficult to interpret clinically unless it is constrained by known protocol rules, toxicity criteria, or biological thresholds.
 
@@ -244,13 +242,13 @@ q^+
 T_i(q^-,X^-,a^-,t,\theta,\zeta_i),
 $$
 
-where \(W_t\) represents continuous stochastic forcing and \(\xi_i\) and \(\zeta_i\) represent random variation in reset outcomes or transition selection. A model need not include every source of randomness: it may retain deterministic clinical interventions while introducing stochasticity only in biological dynamics, observations, unplanned events, or latent-state transitions.
+where $W_t$ represents continuous stochastic forcing and $\xi_i$ and $\zeta_i$ represent random variation in reset outcomes or transition selection. A model need not include every source of randomness: it may retain deterministic clinical interventions while introducing stochasticity only in biological dynamics, observations, unplanned events, or latent-state transitions.
 
 For `hybrid-ds-julia`, stochastic hybrid systems are a longer-term extension. The initial deterministic event-aware core remains valuable because it provides the guards, reset maps, mode logic, sensitivity abstractions, and numerical tests on which stochastic extensions can build. The immediate goal is not to reproduce full multiscale agent-based or cellular-automaton models, but to support a staged path from deterministic ODE-and-event models to uncertainty-aware stochastic hybrid models where data and scientific questions justify the additional complexity.
 
 #### Competing events, multistate models, and point processes
 
-A cause-specific competing-events survival model can supply transition intensities for stochastic hybrid events. Let \(N_i(t)\) count events of type \(i\), such as a toxicity-triggered treatment hold, progression, hospitalization, treatment discontinuation, or death. The cause-specific intensity is:
+A cause-specific competing-events survival model can supply transition intensities for stochastic hybrid events. Let $N_i(t)$ count events of type $i$, such as a toxicity-triggered treatment hold, progression, hospitalization, treatment discontinuation, or death. The cause-specific intensity is:
 
 $$
 \lambda_i(t \mid \mathcal{H}_t)
@@ -271,7 +269,7 @@ $$
 \sum_{i=1}^{K}\lambda_i(t),
 $$
 
-and, conditional on an event occurring at time \(t\), its type can be sampled with probability:
+and, conditional on an event occurring at time $t$, its type can be sampled with probability:
 
 $$
 \Pr\{\text{event type}=i\mid\text{event at }t,\mathcal{H}_t\}
@@ -295,7 +293,7 @@ t
 \bigr),
 $$
 
-where \(\phi\) denotes parameters of the event-risk model. When event \(i\) occurs, the model applies its event-specific reset and mode-transition maps:
+where $\phi$ denotes parameters of the event-risk model. When event $i$ occurs, the model applies its event-specific reset and mode-transition maps:
 
 $$
 X^+
@@ -307,9 +305,7 @@ q^+
 T_i(q^-,X^-,a^-,t,\theta).
 $$
 
-Classical competing-risks models are most directly applicable when one event precludes the others for the endpoint being modeled. Death, for example, precludes future progression observations. Toxicity holds, hospitalization, and progression may instead be recurrent or sequential events. In those settings, the appropriate generalization is a history-dependent multistate point-process model, with event-specific transition intensities from each current mode.
-
-For example, treatment-active mode may have outgoing transitions:
+Classical competing-risks models are most directly applicable when one event precludes the others for the endpoint being modeled. Death, for example, precludes future progression observations. Toxicity holds, hospitalization, and progression may instead be recurrent or sequential events. In those settings, the appropriate generalization is a history-dependent multistate point-process model, with event-specific transition intensities from each current mode. For example, treatment-active mode may have outgoing transitions:
 
 $$
 \mathrm{treatment\ active}
@@ -344,12 +340,12 @@ $$
 
 where:
 
-- \(X_t\) is the stochastic state;
-- \(f\) is the drift;
-- \(g\) is the diffusion coefficient;
-- \(W_t\) is a Wiener process;
-- \(N_t\) is a counting process; and
-- \(J\) describes the state change associated with a jump.
+- $X_t$ is the stochastic state;
+- $f$ is the drift;
+- $g$ is the diffusion coefficient;
+- $W_t$ is a Wiener process;
+- $N_t$ is a counting process; and
+- $J$ describes the state change associated with a jump.
 
 A neural jump SDE replaces one or more of these components with a neural-network parameterization:
 
@@ -401,15 +397,13 @@ In a QSP or PK/PD context, neural jump SDEs could be useful for:
 - Estimating event risk from patient state and history; and
 - Simulating distributions of outcomes under alternative dosing and monitoring policies.
 
-The main limitations are scientific as well as computational. Sparse, irregular data may not identify the separate effects of drift, diffusion, jump intensity, and jump magnitude. A learned event intensity can reflect monitoring, documentation, access, or clinician behavior rather than biology alone. Inference can be expensive, stochastic gradients can be noisy, and clinical causal or policy use requires explicit treatment of confounding, calibrated uncertainty, external validation, and a defined context of use.
-
-For `hybrid-ds-julia`, neural jump SDEs belong to a research-facing extension layer rather than the first implementation milestone. The package can nevertheless be designed so that its deterministic event abstractions—guards, reset maps, regime transitions, and event-aware sensitivities—form a coherent foundation for later stochastic and learned extensions.
+The main limitations are scientific as well as computational. Sparse, irregular data may not identify the separate effects of drift, diffusion, jump intensity, and jump magnitude. A learned event intensity can reflect monitoring, documentation, access, or clinician behavior rather than biology alone. Inference can be expensive, stochastic gradients can be noisy, and clinical causal or policy use requires explicit treatment of confounding, calibrated uncertainty, external validation, and a defined context of use. For `hybrid-ds-julia`, neural jump SDEs belong to a research-facing extension layer rather than the first implementation milestone. The package can nevertheless be designed so that its deterministic event abstractions—guards, reset maps, regime transitions, and event-aware sensitivities—form a coherent foundation for later stochastic and learned extensions.
 
 ## Treatment actions, histories, and learned policies
 
-Here, \(a(t)\) denotes the treatment action or intervention in effect at time \(t\). The action may include a dose, infusion rate, dose interval, drug choice, combination regimen, or monitoring schedule. As with \(x^-\) and \(q^-\), \(a^-\) denotes the action in effect immediately before an event, whereas \(a^+\) denotes the next action selected after that event.
+Here, $a(t)$ denotes the treatment action or intervention in effect at time $t$. The action may include a dose, infusion rate, dose interval, drug choice, combination regimen, or monitoring schedule. As with $x^-$ and $q^-$, $a^-$ denotes the action in effect immediately before an event, whereas $a^+$ denotes the next action selected after that event.
 
-The action is not generally a function only of the current observed measurements. In clinical settings, treatment decisions often depend on the available patient history \(\mathcal{H}_t\), including prior treatments, cumulative exposure, prior toxicities, imaging results, laboratory trajectories, biomarkers, and previously observed events. Let:
+The action is not generally a function only of the current observed measurements. In clinical settings, treatment decisions often depend on the available patient history $\mathcal{H}_t$, including prior treatments, cumulative exposure, prior toxicities, imaging results, laboratory trajectories, biomarkers, and previously observed events. Let:
 
 $$
 \mathcal{H}_t
@@ -421,7 +415,7 @@ e_{0:t}
 \bigr)
 $$
 
-denote this information history. A state-estimation procedure can use \(\mathcal{H}_t\) to construct a current estimated or belief state \(\hat{s}(t)\). The policy \(\pi_{\omega}\), learned through reinforcement learning, then selects the treatment action:
+denote this information history. A state-estimation procedure can use $\mathcal{H}_t$ to construct a current estimated or belief state $\hat{s}(t)$. The policy $\pi_{\omega}$, learned through reinforcement learning, then selects the treatment action:
 
 $$
 a(t)
@@ -434,7 +428,7 @@ t
 \bigr).
 $$
 
-Here, \(\omega\) denotes the learned parameters of the policy—for example, the weights and biases of a neural network or the coefficients of another parameterized decision rule.
+Here, $\omega$ denotes the learned parameters of the policy—for example, the weights and biases of a neural network or the coefficients of another parameterized decision rule.
 
 At an event time, the post-event action is therefore:
 
@@ -449,7 +443,7 @@ t
 \bigr),
 $$
 
-where \(\hat{s}^+\) and \(\mathcal{H}^+\) incorporate the newly observed event and its associated clinical information.
+where $\hat{s}^+$ and $\mathcal{H}^+$ incorporate the newly observed event and its associated clinical information.
 
 ## Model-free and model-based reinforcement learning
 
@@ -472,7 +466,7 @@ t
 \bigr),
 $$
 
-where \(\pi_{\omega}\) is the treatment policy learned by the RL procedure, \(\hat{s}^+\) is the post-event estimated patient state, and \(\mathcal{H}^+\) is the information history after incorporating the event, new observations, prior treatments, and prior toxicities.
+where $\pi_{\omega}$ is the treatment policy learned by the RL procedure, $\hat{s}^+$ is the post-event estimated patient state, and $\mathcal{H}^+$ is the information history after incorporating the event, new observations, prior treatments, and prior toxicities.
 
 The distinction is not absolute. A practical system can combine a structured hybrid model with learned residual dynamics, a learned value function, or a learned policy. In this setting, the hybrid-system layer supplies the event-aware dynamical model, while the RL component learns how to select treatment actions or improve a treatment policy using real or simulated patient trajectories.
 
@@ -481,7 +475,7 @@ The distinction is not absolute. A practical system can combine a structured hyb
 Examples of model-free RL algorithms include:
 
 - **Q-learning:** learns an action-value function and is most natural for relatively small, discrete state and action spaces.
-- **Deep Q-Network (DQN):** uses a neural network to approximate the action value \(Q(s,a)\); it is most directly suited to a discrete action set, such as choosing among prespecified dose levels, regimen options, or treatment actions.
+- **Deep Q-Network (DQN):** uses a neural network to approximate the action value $Q(s,a)$; it is most directly suited to a discrete action set, such as choosing among prespecified dose levels, regimen options, or treatment actions.
 - **Double DQN** and **Dueling DQN:** variants intended to improve the stability or value estimation of DQN-style methods.
 - **Policy-gradient methods:** directly optimize a parameterized policy, potentially for either discrete or continuous actions.
 - **Actor--critic methods:** learn both a policy (the actor) and a value or action-value function (the critic). Examples include Advantage Actor--Critic (A2C/A3C), Proximal Policy Optimization (PPO), Deep Deterministic Policy Gradient (DDPG), Twin Delayed DDPG (TD3), and Soft Actor--Critic (SAC).

@@ -1,4 +1,3 @@
-
 ## Test beds
 
 The initial test beds should be scientifically recognizable, numerically demanding enough to demonstrate the value of hybrid methods, and small enough to support reproducible end-to-end workflows.
@@ -13,25 +12,25 @@ The first flagship biomedical example should be an **immuno-oncology tumor–imm
 
 A representative model can include states for:
 
-\[
+$$
 T(t) = \text{tumor burden},
-\]
+$$
 
-\[
+$$
 E(t) = \text{effector immune-cell activity},
-\]
+$$
 
-\[
+$$
 C(t) = \text{drug concentration},
-\]
+$$
 
-\[
+$$
 B(t) = \text{toxicity or biomarker burden}.
-\]
+$$
 
 Between events, a compact model might have the form
 
-\[
+$$
 \dot{T}
 =
 r_T T
@@ -40,9 +39,9 @@ r_T T
 \right)
 -
 k_E E T,
-\]
+$$
 
-\[
+$$
 \dot{E}
 =
 s_E
@@ -53,15 +52,15 @@ s_E
 d_E E
 -
 \gamma_E C E,
-\]
+$$
 
-\[
+$$
 \dot{C}
 =
 -k_C C,
-\]
+$$
 
-\[
+$$
 \dot{B}
 =
 \alpha_B C
@@ -69,37 +68,37 @@ d_E E
 \beta_B E
 -
 k_B B.
-\]
+$$
 
 This system is only illustrative. The specific biological components can be adjusted as the benchmark is refined. The key point is that the model should contain a treatment-control structure with clinically interpretable events.
 
-For example, at planned dosing times \(t_k\),
+For example, at planned dosing times $t_k$,
 
-\[
+$$
 C(t_k^+)
 =
 C(t_k^-)
 +
 D_k,
-\]
+$$
 
-where \(D_k\) is the administered dose.
+where $D_k$ is the administered dose.
 
 A toxicity hold may be triggered when
 
-\[
+$$
 B(t)
 \geq
 B_{\mathrm{hold}},
-\]
+$$
 
 causing a transition from an active-treatment mode to a hold mode. In the hold mode, scheduled doses are skipped until toxicity falls below a recovery threshold:
 
-\[
+$$
 B(t)
 \leq
 B_{\mathrm{restart}}.
-\]
+$$
 
 The system can therefore have modes such as:
 
@@ -143,11 +142,11 @@ A useful second-stage benchmark may involve a higher-dimensional model with two 
 
 For example, a combination-treatment model could include:
 
-\[
+$$
 C_1(t),
 \qquad
 C_2(t),
-\]
+$$
 
 for two drug exposures, along with tumor, immune, and toxicity states. A treatment rule might reduce or stop one agent when toxicity crosses a threshold while allowing the other to continue. Such a model naturally produces hybrid trajectories whose interpretation depends on the timing and ordering of events.
 
@@ -165,19 +164,19 @@ Once the deterministic hybrid core is stable, the package can expand toward stoc
 
 A first stochastic extension could add random effects, stochastic forcing, or event-time variability to an otherwise deterministic treatment model. For example, patient-level parameters may be sampled from a distribution:
 
-\[
+$$
 \theta_i
 \sim
 p(\theta \mid \eta_i),
-\]
+$$
 
-where \(i\) indexes a virtual patient and \(\eta_i\) represents patient-specific random effects.
+where $i$ indexes a virtual patient and $\eta_i$ represents patient-specific random effects.
 
 This can be combined with deterministic treatment events and state-triggered treatment logic. The resulting workflow would allow users to ask not only whether a schedule works for a nominal trajectory, but also how robust the schedule is across a population.
 
 A more advanced extension could represent uncertainty in unobserved biology through stochastic differential equations or jump processes:
 
-\[
+$$
 dX_t
 =
 f(X_t,t,\theta)\,dt
@@ -185,29 +184,29 @@ f(X_t,t,\theta)\,dt
 g(X_t,t,\theta)\,dW_t
 +
 J(X_{t^-},t,\theta)\,dN_t.
-\]
+$$
 
 The deterministic scheduled intervention structure remains explicit, while stochastic terms represent biological fluctuations, unobserved disturbances, variable adherence, or random clinical events.
 
 Bayesian parameter inference is another natural extension. A modeler may specify priors over mechanistic parameters:
 
-\[
+$$
 p(\theta),
-\]
+$$
 
 combine those with a likelihood for longitudinal observations:
 
-\[
+$$
 p(y \mid \theta),
-\]
+$$
 
 and obtain a posterior distribution:
 
-\[
+$$
 p(\theta \mid y)
 \propto
 p(y \mid \theta)p(\theta).
-\]
+$$
 
 For hybrid models, the likelihood can depend strongly on event timing, treatment holds, threshold crossings, and reset states. Event-aware sensitivities can therefore be useful for gradient-based inference, Laplace approximations, variational methods, or Hamiltonian Monte Carlo workflows.
 
@@ -219,21 +218,21 @@ A mathematically focused benchmark should accompany the biomedical examples. One
 
 A Filippov system has different vector fields on different sides of a switching surface. In two dimensions, one may write:
 
-\[
+$$
 \dot{x}
 =
 f^+(x,\mu)
 \qquad \text{when } h(x)>0,
-\]
+$$
 
-\[
+$$
 \dot{x}
 =
 f^-(x,\mu)
 \qquad \text{when } h(x)<0,
-\]
+$$
 
-where \(h(x)=0\) defines the switching boundary and \(\mu\) is a bifurcation parameter.
+where $h(x)=0$ defines the switching boundary and $\mu$ is a bifurcation parameter.
 
 A pseudo-Hopf bifurcation is a nonsmooth analogue of a Hopf-type transition, in which a periodic orbit or related oscillatory behavior arises through the interaction of the vector fields and the switching boundary rather than through the classical smooth-system eigenvalue crossing alone.
 

@@ -18,33 +18,33 @@ A clinically relevant question is not only whether a nominal dose reduces tumor 
 
 With event-aware simulation, the model can represent the full treatment logic directly:
 
-\[
+$$
 C(t_k^+)
 =
 C(t_k^-)
 +
 D_k
-\]
+$$
 
 at planned dose times, together with threshold-triggered treatment holds such as
 
-\[
+$$
 B(t)
 \geq
 B_{\mathrm{hold}}
 \quad \Longrightarrow \quad
 \text{hold treatment}.
-\]
+$$
 
 If toxicity subsequently recovers,
 
-\[
+$$
 B(t)
 \leq
 B_{\mathrm{restart}}
 \quad \Longrightarrow \quad
 \text{restart or reduce treatment}.
-\]
+$$
 
 The resulting trajectory can be analyzed with respect to dose size, dose interval, treatment-hold thresholds, restart thresholds, and patient-specific parameter variation.
 
@@ -118,21 +118,21 @@ A hybrid QSP model can make those differences visible at the regimen level.
 
 Suppose a compound-specific parameter vector is written as
 
-\[
+$$
 \theta_j,
-\]
+$$
 
-where \(j\) indexes candidate compounds. The model may then produce an outcome map
+where $j$ indexes candidate compounds. The model may then produce an outcome map
 
-\[
+$$
 \mathcal{O}(\theta_j, D, \tau, \pi),
-\]
+$$
 
 where:
 
-- \(D\) represents dose,
-- \(\tau\) represents schedule timing,
-- and \(\pi\) represents a treatment policy, such as a toxicity-hold or restart rule.
+- $D$ represents dose,
+- $\tau$ represents schedule timing,
+- and $\pi$ represents a treatment policy, such as a toxicity-hold or restart rule.
 
 The outcome may include tumor control, biomarker suppression, cumulative exposure, time in toxicity hold, relapse probability, or time to progression.
 
@@ -150,9 +150,9 @@ This provides a way to connect compound properties to decision-relevant dynamica
 
 Autoimmune and inflammatory disease models often have flare-remission behavior, delayed response, treatment tapering, rescue therapy, and biomarker-based adjustment. These features make them natural applications for hybrid dynamical-systems methods.
 
-A conceptual model might include inflammatory activity \(I\), regulatory immune activity \(R\), drug exposure \(C\), and a toxicity or adverse-effect burden \(B\):
+A conceptual model might include inflammatory activity $I$, regulatory immune activity $R$, drug exposure $C$, and a toxicity or adverse-effect burden $B$:
 
-\[
+$$
 \dot{I}
 =
 \alpha_I I
@@ -160,9 +160,9 @@ A conceptual model might include inflammatory activity \(I\), regulatory immune 
 k_R R I
 -
 k_C C I,
-\]
+$$
 
-\[
+$$
 \dot{R}
 =
 s_R
@@ -170,41 +170,41 @@ s_R
 d_R R
 +
 \eta_C C,
-\]
+$$
 
-\[
+$$
 \dot{C}
 =
 -k_C^{\mathrm{elim}}C,
-\]
+$$
 
-\[
+$$
 \dot{B}
 =
 \alpha_B C
 -
 k_B B.
-\]
+$$
 
 A treatment policy may initiate rescue therapy during a flare:
 
-\[
+$$
 I(t)
 \geq
 I_{\mathrm{flare}}
 \quad \Longrightarrow \quad
 \text{administer rescue treatment},
-\]
+$$
 
 or taper treatment when disease activity remains controlled:
 
-\[
+$$
 I(t)
 \leq
 I_{\mathrm{control}}
 \quad \Longrightarrow \quad
 \text{reduce maintenance treatment}.
-\]
+$$
 
 The model can then be used to study:
 
@@ -224,7 +224,7 @@ A crop-growth system may include biomass, water availability, nutrient status, c
 
 For example, a precision-irrigation policy could apply water when soil moisture falls below a threshold:
 
-\[
+$$
 M(t)
 \leq
 M_{\mathrm{threshold}}
@@ -234,11 +234,11 @@ M(t^+)
 M(t^-)
 +
 \Delta M.
-\]
+$$
 
 A nutrient-management policy could apply fertilizer after a sensor-derived nutrient variable falls below a specified level:
 
-\[
+$$
 N(t)
 \leq
 N_{\mathrm{threshold}}
@@ -248,7 +248,7 @@ N(t^+)
 N(t^-)
 +
 \Delta N.
-\]
+$$
 
 The hybrid model can then be used to compare:
 

@@ -15,9 +15,9 @@ Examples include:
 
 A crop model may represent biomass accumulation, canopy development, competition for light, water uptake, nutrient dynamics, and reproductive allocation as continuous processes. Yet the outcomes of practical interest—yield, resilience, resource efficiency, and trait value—may depend strongly on the timing of discrete interventions.
 
-For example, a plant-growth model may include biomass \(W\), leaf area or canopy state \(L\), soil-water availability \(M\), and nutrient availability \(N\):
+For example, a plant-growth model may include biomass $W$, leaf area or canopy state $L$, soil-water availability $M$, and nutrient availability $N$:
 
-\[
+$$
 \dot{W}
 =
 \alpha L
@@ -25,17 +25,17 @@ For example, a plant-growth model may include biomass \(W\), leaf area or canopy
 \frac{N}{K_N+N}
 -
 \delta_W W,
-\]
+$$
 
-\[
+$$
 \dot{L}
 =
 g_L(W,L)
 -
 \delta_L L,
-\]
+$$
 
-\[
+$$
 \dot{M}
 =
 I(t)
@@ -43,9 +43,9 @@ I(t)
 u_M(W,L,M)
 -
 \ell_M(M),
-\]
+$$
 
-\[
+$$
 \dot{N}
 =
 F(t)
@@ -53,33 +53,33 @@ F(t)
 u_N(W,L,N)
 -
 \ell_N(N).
-\]
+$$
 
-Here, \(I(t)\) and \(F(t)\) may include irrigation and fertilizer interventions. At selected event times, the model may apply impulsive updates:
+Here, $I(t)$ and $F(t)$ may include irrigation and fertilizer interventions. At selected event times, the model may apply impulsive updates:
 
-\[
+$$
 M(t_k^+)
 =
 M(t_k^-)
 +
 \Delta M_k,
-\]
+$$
 
-\[
+$$
 N(t_k^+)
 =
 N(t_k^-)
 +
 \Delta N_k.
-\]
+$$
 
 The system can also include state-triggered rules. For example, irrigation may occur when soil moisture crosses a lower threshold:
 
-\[
+$$
 M(t)
 \leq
 M_{\mathrm{trigger}}.
-\]
+$$
 
 In a more advanced setting, the intervention policy may depend on developmental stage, weather forecasts, crop stress indicators, or competing resource constraints.
 
@@ -110,7 +110,7 @@ The intended design principles are:
 
 A possible early API could allow users to define:
 
-\[
+$$
 \mathcal{H}
 =
 \{
@@ -120,15 +120,15 @@ h_{q\rightarrow q'},
 R_{q\rightarrow q'},
 \mathcal{E}_{\mathrm{scheduled}}
 \},
-\]
+$$
 
 where:
 
-- \(\mathcal{Q}\) is a set of modes,
-- \(f_q\) is the continuous vector field in mode \(q\),
-- \(h_{q\rightarrow q'}\) is an event or guard function,
-- \(R_{q\rightarrow q'}\) is a reset map,
-- and \(\mathcal{E}_{\mathrm{scheduled}}\) contains scheduled intervention events.
+- $\mathcal{Q}$ is a set of modes,
+- $f_q$ is the continuous vector field in mode $q$,
+- $h_{q\rightarrow q'}$ is an event or guard function,
+- $R_{q\rightarrow q'}$ is a reset map,
+- and $\mathcal{E}_{\mathrm{scheduled}}$ contains scheduled intervention events.
 
 A modeler should be able to specify a system in terms close to the scientific problem:
 
