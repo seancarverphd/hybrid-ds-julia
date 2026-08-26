@@ -2,6 +2,34 @@
 
 This section is organized to mirror the mathematical, computational, application, and limitation sections of this README. It is intentionally a curated starting point rather than a comprehensive bibliography. Readers should consult original papers, authoritative guidelines, maintained software documentation, and domain experts before relying on a model for scientific, engineering, clinical, or operational decisions.
 
+### Initial implementation models
+
+The first reference models should be selected not only for biological relevance, but also for the strength of the available mathematical and numerical validation targets. The two papers below provide a staged path from scheduled impulsive systems with explicit periodic-orbit results to a state-triggered hybrid treatment model.
+
+- Zhao, Z., Pang, L., and Li, Q. (2021). Analysis of a hybrid impulsive tumor–immune model with immunotherapy and chemotherapy. *Chaos, Solitons & Fractals*, 144, 110617. https://doi.org/10.1016/j.chaos.2020.110617
+
+  This is the first proposed implementation model for `hybrid-ds-julia`. It develops tumor–immune systems with pulsed immunotherapy and chemotherapy, including both fixed schedules with unequal treatment frequencies and a hybrid formulation that combines scheduled immunotherapy with chemotherapy triggered when tumor biomass reaches a specified threshold.
+
+  Its fixed-schedule models are especially useful for initial verification. The authors construct explicit tumor-free periodic solutions and derive threshold quantities, \(R_N\) and \(R_P\), under which those periodic solutions are globally attractive. These results support direct comparisons between simulated and analytic periodic states, independent evaluation of threshold formulas, and convergence tests across the extinction/persistence boundary.
+
+  The later threshold-triggered formulation provides the first state-dependent-event benchmark. It combines scheduled immune-cell infusion with a tumor-burden guard that initiates a chemotherapy reset. This model should be used to validate guard localization, event ordering, reset maps, trajectory segmentation, and event logs. Its threshold-triggered results are numerical rather than closed-form, so they are appropriate for qualitative replication and regression tests rather than exact trajectory or sensitivity oracles.
+
+- Pang, L., Shen, L., and Zhao, Z. (2016). Mathematical modelling and analysis of the tumor treatment regimens with pulsed immunotherapy and chemotherapy. *Computational and Mathematical Methods in Medicine*, 2016, Article 6260474. https://doi.org/10.1155/2016/6260474
+
+  This is the proposed second implementation model and a progression to more detailed treatment dynamics. It represents periodic CTL-cell infusion and chemotherapy as scheduled impulsive interventions, adds a continuously decaying drug-concentration state, and extends the base tumor–immune system to include drug resistance, multiple tumor subpopulations, two-drug chemotherapy, and mixed immunotherapy–chemotherapy regimens.
+
+  The simplest reductions provide exact checks for the immune-cell periodic response and the between-dose drug-concentration trajectory. The paper also derives a local stability condition for a tumor-free periodic solution in its single-immunotherapy subsystem. These features make it suitable for tests of scheduled resets, periodic steady-state calculations, Floquet or Poincaré-map stability calculations, and algebraic therapeutic-window relationships.
+
+  Its higher-dimensional resistance and combination-treatment extensions are numerical benchmarks. They are appropriate for regression tests that reproduce reported regimens, state trajectories, threshold searches, and qualitative treatment outcomes, while remaining clearly separate from clinical dosing recommendations.
+
+Together, these models define an implementation sequence:
+
+1. Implement scheduled impulses, explicit periodic solutions, and threshold checks from Zhao et al.
+2. Add unequal treatment frequencies and test long-horizon convergence to periodic orbits.
+3. Add Zhao et al.’s state-triggered chemotherapy threshold, including guard localization and reset ordering.
+4. Introduce Pang et al.’s drug-concentration state and therapeutic-window calculations.
+5. Extend to resistance, multiple tumor populations, multiple drugs, sensitivity analysis, and constrained schedule optimization.
+
 ### Hybrid-systems foundations, events, and sensitivity analysis
 
 #### Hybrid transitions, saltation matrices, and event-aware derivatives

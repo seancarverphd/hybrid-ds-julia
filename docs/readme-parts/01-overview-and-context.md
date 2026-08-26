@@ -116,6 +116,7 @@ The package is not inherently appropriate merely because a problem has discrete 
 - [Crop motivation and software plan](#crop-motivation-and-software-plan)
 - [Roadmap and licensing](#roadmap-and-licensing)
 - [Further reading](#further-reading)
+  - [Initial implementation models](#initial-implementation-models)
   - [Hybrid-systems foundations, events, and sensitivity analysis](#hybrid-systems-foundations-events-and-sensitivity-analysis)
     - [Hybrid transitions, saltation matrices, and event-aware derivatives](#hybrid-transitions-saltation-matrices-and-event-aware-derivatives)
     - [Identifiability, validation, and uncertainty](#identifiability-validation-and-uncertainty)
