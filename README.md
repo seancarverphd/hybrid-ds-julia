@@ -86,14 +86,14 @@ R_e\bigl(x^-, q^-, t, \theta\bigr),
 \qquad
 q^+
 =
-\\mathrm{target}(e)
+\mathrm{target}(e)
 ```
 
 Here $x^-$ and $x^+$ denote the continuous state immediately before and after the transition. The reset map $R_e$ may be the identity map when the continuous state remains unchanged and only the mode, input, or a future protocol action changes:
 
 ```math
-R_{\texttt{on} \to \texttt{hold}}
-\bigl(x^-, \texttt{on}, t, \theta\bigr)
+R_{\mathrm{on} \to \mathrm{hold}}
+\bigl(x^-, \mathrm{on}, t, \theta\bigr)
 =
 x^-
 ```
@@ -101,11 +101,11 @@ x^-
 For a treatment hold, the transition can nevertheless change the future continuous dynamics by selecting a different active input. For example, an infusion protocol may use
 
 ```math
-v_{\texttt{on}}(t)
+v_{\mathrm{on}}(t)
 =
 v_{\mathrm{inf}}(t),
 \qquad
-v_{\texttt{hold}}(t)
+v_{\mathrm{hold}}(t)
 =
 0
 ```
@@ -161,7 +161,7 @@ A treatment-hold transition may be enabled only while treatment is active:
 ```math
 e_{\mathrm{hold}}
 =
-(\texttt{on}, \texttt{hold})
+(\mathrm{on}, \mathrm{hold})
 ```
 
 with guard
@@ -199,7 +199,7 @@ A distinct recovery/restart transition can be enabled only while treatment is he
 ```math
 e_{\mathrm{restart}}
 =
-(\texttt{hold}, \texttt{on})
+(\mathrm{hold}, \mathrm{on})
 ```
 
 with guard
@@ -237,15 +237,15 @@ z_{\mathrm{hold}}
 The resulting mode sequence is
 
 ```math
-\texttt{on}
+\mathrm{on}
 \xrightarrow{\,z_{\mathrm{tox}} = z_{\mathrm{hold}}\,}
-\texttt{hold}
+\mathrm{hold}
 ```
 
 ```math
-\texttt{hold}
+\mathrm{hold}
 \xrightarrow{\,z_{\mathrm{tox}} = z_{\mathrm{restart}}\,}
-\texttt{on}
+\mathrm{on}
 ```
 
 The distinct thresholds create hysteresis. They prevent immediate retoggling at a single threshold, and the mode-dependent enabling rules specify when the hold transition becomes eligible, or rearmed, again.
@@ -1019,9 +1019,7 @@ This should follow a validated deterministic single-subject workflow. Population
 
 ### Interoperability with `HybridSystems.jl`
 
-Before defining a new representation for modes, guards, resets, and transitions, the project may evaluate interoperability with `HybridSystems.jl` and related JuliaReach tools.
-
-Questions include whether a treatment-protocol model can be represented naturally as a hybrid automaton while retaining an idiomatic mechanistic ODE formulation; whether scheduled dosing and state-triggered treatment transitions map cleanly to existing abstractions; and whether the same model can support both SciML simulation and JuliaReach-associated reachability or control analysis.
+Before defining a new representation for modes, guards, resets, and transitions, the project may evaluate interoperability with `HybridSystems.jl` and related JuliaReach tools. Questions include whether a treatment-protocol model can be represented naturally as a hybrid automaton while retaining an idiomatic mechanistic ODE formulation; whether scheduled dosing and state-triggered treatment transitions map cleanly to existing abstractions; and whether the same model can support both SciML simulation and JuliaReach-associated reachability or control analysis.
 
 A new domain-facing wrapper would be justified only if generic representations cannot express needed treatment-protocol semantics clearly and reproducibly.
 
