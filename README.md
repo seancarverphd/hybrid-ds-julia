@@ -1,6 +1,3 @@
-I recommend using \(v_q(t)\) for the continuous mode-dependent input. It is visually distinct from the state \(x(t)\), the parameter vector \(\theta\), the event times \(\tau_i\), and the accidental `\nu` rendering issue. Below is the corrected GitHub-oriented Markdown source, using fenced `math` blocks for every display equation.
-
-```markdown
 # hybrid-ds-julia *(working title)*
 
 ### Domain-facing hybrid systems for QSP and PK/PD
@@ -177,7 +174,7 @@ z_{\mathrm{tox}}
 z_{\mathrm{hold}}
 ```
 
-The hold transition occurs when the toxicity state crosses the upper threshold from below:
+The hold transition occurs when the toxicity state crosses the upper threshold from below. The one-sided derivative is evaluated using the incoming mode, so it encodes the direction of the guard crossing:
 
 ```math
 z_{\mathrm{tox}}
@@ -215,7 +212,7 @@ z_{\mathrm{tox}}
 z_{\mathrm{restart}}
 ```
 
-The restart transition occurs when the toxicity state crosses the lower recovery threshold from above:
+The restart transition occurs when the toxicity state crosses the lower recovery threshold from above. Again, the one-sided derivative is evaluated using the incoming mode:
 
 ```math
 z_{\mathrm{tox}}
@@ -527,7 +524,7 @@ where
 \Gamma_{e,\theta}
 ```
 
-is the additive parameter-dependent contribution arising from explicit parameter dependence in the guard, reset map, or transition specification.
+is the additive parameter-dependent contribution arising from explicit parameter dependence in the guard, reset map, vector fields, or transition specification. Its exact form depends on the adopted event convention and on which quantities are held fixed. This schematic relation is not, by itself, a complete implementation formula; the benchmark specification will state and derive the convention-specific update used for validation.
 
 Transversality requires the guard to be crossed at nonzero rate:
 
@@ -671,19 +668,19 @@ q_i^+
 \operatorname{target}(e_i)
 ```
 
-For a prescribed event time, $\tau_i$ is known. For a state-triggered transition, $\tau_i$ is determined implicitly by
+For a prescribed event time, $\tau_i$ is known. For a state-triggered transition, write $\tau_i=\tau_i(z_i,\theta)$; the dependence on $z_i$ and $\theta$ is suppressed in the preceding flow and reset notation only for readability. The event time is determined implicitly by
 
 ```math
 g_{e_i}
 \!\left(
 \varphi_{q_i^-}
 \bigl(
-\tau_i,
+\tau_i(z_i,\theta),
 \tau_{i-1}^+;
 z_i,
 \theta
 \bigr),
-\tau_i,
+\tau_i(z_i,\theta),
 \theta
 \right)
 =
@@ -694,13 +691,13 @@ The Jacobian of the connection constraint must include derivatives of the smooth
 
 ```math
 \frac{
-\partial \tau_i
+\partial \tau_i(z_i,\theta)
 }{
 \partial z_i
 },
 \qquad
 \frac{
-\partial \tau_i
+\partial \tau_i(z_i,\theta)
 }{
 \partial \theta
 }
@@ -777,19 +774,19 @@ Existing Julia tools provide event handling, sensitivity analysis, and multiple 
 
 The central validation target is a hybrid model with independently derived analytic sensitivities, accurate to round-off error under a stated event convention and regularity assumptions.
 
-For a selected parameter or initial-condition direction, the benchmark should make it possible to obtain analytically
+For a selected parameter direction, with the initial condition $x_0$ held fixed, the benchmark should make it possible to obtain analytically
 
 ```math
-\tau(\theta),
+\tau(x_0,\theta),
 \qquad
-\frac{d\tau}{d\theta},
+\frac{\partial \tau}{\partial \theta},
 \qquad
-x(T;\theta),
+x(T;x_0,\theta),
 \qquad
-\frac{d x(T;\theta)}{d\theta}
+\frac{\partial x(T;x_0,\theta)}{\partial \theta}
 ```
 
-where $\tau(\theta)$ is a state-triggered event time and $T$ is a terminal time after the transition.
+where $\tau(x_0,\theta)$ is a state-triggered event time and $T$ is a terminal time after the transition. Initial-condition sensitivities are treated analogously, with $\theta$ held fixed.
 
 The benchmark should separately test:
 
@@ -827,11 +824,11 @@ Interpretation of that error requires the numerical tolerances, event-location b
 
 Finite differences are neither the project’s primary sensitivity method nor its validation oracle.
 
-For an output $J(\theta)$, a forward difference is
+For an output $J(x_0,\theta)$, a forward difference in one selected scalar parameter direction, with $x_0$ and all other parameters held fixed, is
 
 ```math
 \frac{
-J(\theta+h)-J(\theta)
+J(x_0,\theta+h)-J(x_0,\theta)
 }{
 h
 }
@@ -1140,4 +1137,3 @@ Feedback is especially welcome on:
 - `HybridSystems.jl` documentation and repository. General hybrid-system definitions and interfaces in Julia, including hybrid automata and switched systems.
 
 - SciML documentation for callbacks, forward sensitivity analysis, and multiple shooting.
-```
