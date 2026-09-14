@@ -240,7 +240,9 @@ The resulting mode sequence is
 \texttt{on}
 \xrightarrow{
 z_{\mathrm{tox}} = z_{\mathrm{hold}}
-}
+}```
+
+```math
 \texttt{hold}
 \xrightarrow{
 z_{\mathrm{tox}} = z_{\mathrm{restart}}
