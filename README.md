@@ -86,7 +86,7 @@ R_e\bigl(x^-, q^-, t, \theta\bigr),
 \qquad
 q^+
 =
-\operatorname{target}(e)
+\\mathrm{target}(e)
 ```
 
 Here $x^-$ and $x^+$ denote the continuous state immediately before and after the transition. The reset map $R_e$ may be the identity map when the continuous state remains unchanged and only the mode, input, or a future protocol action changes:
@@ -665,7 +665,7 @@ and the mode after the transition is
 ```math
 q_i^+
 =
-\operatorname{target}(e_i)
+\mathrm{target}(e_i)
 ```
 
 For a prescribed event time, $\tau_i$ is known. For a state-triggered transition, write $\tau_i=\tau_i(z_i,\theta)$; the dependence on $z_i$ and $\theta$ is suppressed in the preceding flow and reset notation only for readability. The event time is determined implicitly by
