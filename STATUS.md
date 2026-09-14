@@ -111,16 +111,8 @@ step-size sweep only as a controlled diagnostic.
 
 Its purpose is to illustrate that a perturbation must be both:
 
-```math
-\text{large enough to overcome numerical error}
-```
-
-and
-
-```math
-\text{small enough to preserve event existence, event branch, event order,
-reset sequence, and mode sequence}.
-```
+- large enough to overcome numerical error, and
+- small enough to preserve event existence, event branch, event order, reset sequence, and mode sequence}.
 
 In hybrid systems, that usable interval may be absent. Finite differences are
 not the primary sensitivity method or the validation oracle.
