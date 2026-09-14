@@ -87,15 +87,15 @@ Implement a deliberately low-dimensional hybrid system with:
 1. A continuous state and mode-dependent vector field;
 2. A transversal state-triggered guard;
 3. An explicitly specified edge
-   \[
+  ```math
    e=(q^-,q^+);
-   \]
+   ```
 4. A reset map
-   \[
+  ```math
    x^+
    =
    R_e(x^-,q^-,\tau_e,\theta);
-   \]
+  ```
 5. Analytically known event time and event-time derivative;
 6. Analytically known post-event flow; and
 7. An analytic derivative of a terminal state or scalar output.
@@ -111,16 +111,16 @@ step-size sweep only as a controlled diagnostic.
 
 Its purpose is to illustrate that a perturbation must be both:
 
-\[
+```math
 \text{large enough to overcome numerical error}
-\]
+```
 
 and
 
-\[
+```math
 \text{small enough to preserve event existence, event branch, event order,
 reset sequence, and mode sequence}.
-\]
+```
 
 In hybrid systems, that usable interval may be absent. Finite differences are
 not the primary sensitivity method or the validation oracle.
@@ -175,5 +175,4 @@ following regimes:
 
 ## Licensing
 
-Licensing is under review. No license is granted at this stage.
-```
+Licensing is under review. No license is granted at this stage
