@@ -238,9 +238,13 @@ The resulting mode sequence is
 
 ```math
 \texttt{on}
-\xrightarrow{z_{\mathrm{tox}} = z_{\mathrm{hold}}}
+\xrightarrow{\,z_{\mathrm{tox}} = z_{\mathrm{hold}}\,}
 \texttt{hold}
-\xrightarrow{z_{\mathrm{tox}} = z_{\mathrm{restart}}}
+```
+
+```math
+\texttt{hold}
+\xrightarrow{\,z_{\mathrm{tox}} = z_{\mathrm{restart}}\,}
 \texttt{on}
 ```
 
