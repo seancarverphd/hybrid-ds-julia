@@ -1,3 +1,6 @@
+I recommend using \(v_q(t)\) for the continuous mode-dependent input. It is visually distinct from the state \(x(t)\), the parameter vector \(\theta\), the event times \(\tau_i\), and the accidental `\nu` rendering issue. Below is the corrected GitHub-oriented Markdown source, using fenced `math` blocks for every display equation.
+
+```markdown
 # hybrid-ds-julia *(working title)*
 
 ### Domain-facing hybrid systems for QSP and PK/PD
@@ -27,19 +30,19 @@ Such logic is often encoded as incidental callback code or informal external boo
 
 A hybrid model contains a continuous state
 
-$$
-x(t)\in\mathbb R^n
-$$
+```math
+x(t) \in \mathbb R^n
+```
 
 and a discrete mode
 
-$$
-q(t)\in\mathcal Q.
-$$
+```math
+q(t) \in \mathcal Q
+```
 
-While the active mode is \(q(t)\), the continuous state evolves according to
+While the active mode is $q(t)$, the continuous state evolves according to
 
-$$
+```math
 \dot{x}(t)
 =
 f_{q(t)}
@@ -47,106 +50,106 @@ f_{q(t)}
 x(t),
 t,
 \theta,
-u_{q(t)}(t)
-\bigr),
-$$
+v_{q(t)}(t)
+\bigr)
+```
 
-where \(\theta\in\mathbb R^p\) is a parameter vector and \(u_q(t)\) is a continuous input, forcing term, or control signal active while the model is in mode \(q\).
+where $\theta \in \mathbb R^p$ is a parameter vector and $v_q(t)$ is a continuous input, forcing term, or control signal active while the model is in mode $q$.
 
-Scheduled bolus doses, infusion starts or stops, planned therapy changes, protocol visits, and other instantaneous actions are represented separately as explicit scheduled transitions. They are not implicitly absorbed into the continuous input \(u_q(t)\).
+Scheduled bolus doses, infusion starts or stops, planned therapy changes, protocol visits, and other instantaneous actions are represented separately as explicit scheduled transitions. They are not implicitly absorbed into the continuous input $v_q(t)$.
 
 Let
 
-$$
+```math
 \mathcal E
 \subseteq
-\mathcal Q\times\mathcal Q
-$$
+\mathcal Q \times \mathcal Q
+```
 
 denote the permitted directed transitions. A transition, or edge, is written
 
-$$
-e=(q^-,q^+)\in\mathcal E,
-$$
+```math
+e = (q^-, q^+) \in \mathcal E
+```
 
-where \(q^-\) is the active mode immediately before the event and \(q^+\) is the mode immediately afterward.
+where $q^-$ is the active mode immediately before the event and $q^+$ is the mode immediately afterward.
 
 A state-triggered transition is associated with a guard
 
-$$
-g_e\bigl(x(t),t,\theta\bigr)=0.
-$$
+```math
+g_e\bigl(x(t), t, \theta\bigr) = 0
+```
 
 At an event, the transition can reset the continuous state, change an input or parameter, and enter the target mode:
 
-$$
+```math
 x^+
 =
-R_e\bigl(x^-,q^-,t,\theta\bigr),
+R_e\bigl(x^-, q^-, t, \theta\bigr),
 \qquad
 q^+
 =
-\operatorname{target}(e).
-$$
+\operatorname{target}(e)
+```
 
-Here \(x^-\) and \(x^+\) denote the continuous state immediately before and after the transition. The reset map \(R_e\) may be the identity map when the continuous state remains unchanged and only the mode, input, or a future protocol action changes:
+Here $x^-$ and $x^+$ denote the continuous state immediately before and after the transition. The reset map $R_e$ may be the identity map when the continuous state remains unchanged and only the mode, input, or a future protocol action changes:
 
-$$
-R_{\texttt{on}\to\texttt{hold}}
-\bigl(x^-,\texttt{on},t,\theta\bigr)
+```math
+R_{\texttt{on} \to \texttt{hold}}
+\bigl(x^-, \texttt{on}, t, \theta\bigr)
 =
-x^-.
-$$
+x^-
+```
 
 For a treatment hold, the transition can nevertheless change the future continuous dynamics by selecting a different active input. For example, an infusion protocol may use
 
-$$
-u_{\texttt{on}}(t)
+```math
+v_{\texttt{on}}(t)
 =
-u_{\mathrm{inf}}(t),
+v_{\mathrm{inf}}(t),
 \qquad
-u_{\texttt{hold}}(t)
+v_{\texttt{hold}}(t)
 =
-0.
-$$
+0
+```
 
 The continuous state may include pharmacokinetic amount states as well as biological, pharmacodynamic, biomarker, disease, and toxicity states. For example, in an illustrative IV-bolus model,
 
-$$
+```math
 x(t)
 =
 \bigl(
 A_c(t),
 x_{\mathrm{bio}}(t),
 z_{\mathrm{tox}}(t)
-\bigr),
-$$
+\bigr)
+```
 
 where:
 
-- \(A_c(t)\) is the amount of drug in a central PK compartment
-- \(x_{\mathrm{bio}}(t)\) denotes the remaining biological, pharmacodynamic, biomarker, disease, or tumor–immune states
-- \(z_{\mathrm{tox}}(t)\) is an illustrative continuous toxicity or safety-burden state used by the treatment protocol
+- $A_c(t)$ is the amount of drug in a central PK compartment
+- $x_{\mathrm{bio}}(t)$ denotes the remaining biological, pharmacodynamic, biomarker, disease, or tumor–immune states
+- $z_{\mathrm{tox}}(t)$ is an illustrative continuous toxicity or safety-burden state used by the treatment protocol
 
-A scheduled IV-bolus dose \(D_k\) at time \(t_k\) updates the central amount state:
+A scheduled IV-bolus dose $D_k$ at time $t_k$ updates the central amount state:
 
-$$
+```math
 A_c(t_k^+)
 =
 A_c(t_k^-)
 +
-D_k.
-$$
+D_k
+```
 
 The other continuous state components are unchanged by the instantaneous bolus itself, though they subsequently evolve under dynamics affected by drug exposure. If central concentration is needed, it can be defined by
 
-$$
+```math
 C_c(t)
 =
-\frac{A_c(t)}{V_c},
-$$
+\frac{A_c(t)}{V_c}
+```
 
-where \(V_c\) is a central-compartment volume parameter.
+where $V_c$ is a central-compartment volume parameter.
 
 This is an illustrative IV-bolus convention. For oral, subcutaneous, or other extravascular administration, a scheduled dose would update an appropriate depot or absorption-compartment amount state instead. An infusion is normally represented by a continuous, mode-dependent input rate over a specified time interval rather than by an instantaneous amount jump.
 
@@ -154,29 +157,29 @@ A scheduled dose should be logged even when it is not administered. For example,
 
 A complete hybrid treatment model therefore includes continuous dynamics, scheduled interventions, permitted transitions, guards, guard direction, reset maps, event priority, event-enabling and rearming rules, mode transitions, and a reproducible event log.
 
-**Event-enabling and rearming rules** specify which transitions are eligible in each mode and when a transition that has fired becomes eligible again. The toxicity state \(z_{\mathrm{tox}}(t)\) provides a simple illustrative example.
+**Event-enabling and rearming rules** specify which transitions are eligible in each mode and when a transition that has fired becomes eligible again. The toxicity state $z_{\mathrm{tox}}(t)$ provides a simple illustrative example.
 
 A treatment-hold transition may be enabled only while treatment is active:
 
-$$
+```math
 e_{\mathrm{hold}}
 =
-(\texttt{on},\texttt{hold}),
-$$
+(\texttt{on}, \texttt{hold})
+```
 
 with guard
 
-$$
+```math
 g_{e_{\mathrm{hold}}}(x)
 =
 z_{\mathrm{tox}}
 -
-z_{\mathrm{hold}}.
-$$
+z_{\mathrm{hold}}
+```
 
 The hold transition occurs when the toxicity state crosses the upper threshold from below:
 
-$$
+```math
 z_{\mathrm{tox}}
 \bigl(
 \tau_{\mathrm{hold}}
@@ -184,37 +187,37 @@ z_{\mathrm{tox}}
 =
 z_{\mathrm{hold}},
 \qquad
-\dot z_{\mathrm{tox}}
+\dot{z}_{\mathrm{tox}}
 \bigl(
 \tau_{\mathrm{hold}}^-
 \bigr)
 >
-0.
-$$
+0
+```
 
-After this transition, the model is in mode `hold`, so \(e_{\mathrm{hold}}\) is no longer enabled.
+After this transition, the model is in mode `hold`, so $e_{\mathrm{hold}}$ is no longer enabled.
 
 A distinct recovery/restart transition can be enabled only while treatment is held:
 
-$$
+```math
 e_{\mathrm{restart}}
 =
-(\texttt{hold},\texttt{on}),
-$$
+(\texttt{hold}, \texttt{on})
+```
 
 with guard
 
-$$
+```math
 g_{e_{\mathrm{restart}}}(x)
 =
 z_{\mathrm{tox}}
 -
-z_{\mathrm{restart}}.
-$$
+z_{\mathrm{restart}}
+```
 
 The restart transition occurs when the toxicity state crosses the lower recovery threshold from above:
 
-$$
+```math
 z_{\mathrm{tox}}
 \bigl(
 \tau_{\mathrm{restart}}
@@ -222,7 +225,7 @@ z_{\mathrm{tox}}
 =
 z_{\mathrm{restart}},
 \qquad
-\dot z_{\mathrm{tox}}
+\dot{z}_{\mathrm{tox}}
 \bigl(
 \tau_{\mathrm{restart}}^-
 \bigr)
@@ -231,22 +234,22 @@ z_{\mathrm{restart}},
 \qquad
 z_{\mathrm{restart}}
 <
-z_{\mathrm{hold}}.
-$$
+z_{\mathrm{hold}}
+```
 
 The resulting mode sequence is
 
-$$
+```math
 \texttt{on}
 \xrightarrow{
-z_{\mathrm{tox}}=z_{\mathrm{hold}}
+z_{\mathrm{tox}} = z_{\mathrm{hold}}
 }
 \texttt{hold}
 \xrightarrow{
-z_{\mathrm{tox}}=z_{\mathrm{restart}}
+z_{\mathrm{tox}} = z_{\mathrm{restart}}
 }
-\texttt{on}.
-$$
+\texttt{on}
+```
 
 The distinct thresholds create hysteresis. They prevent immediate retoggling at a single threshold, and the mode-dependent enabling rules specify when the hold transition becomes eligible, or rearmed, again.
 
@@ -280,64 +283,64 @@ The project does not claim that hybrid mathematics is new, or that mechanics sof
 
 Let
 
-$$
-x(t;x_0,\theta)
+```math
+x(t; x_0, \theta)
 \in
 \mathbb R^n
-$$
+```
 
-denote the continuous trajectory associated with initial condition \(x_0\) and parameter vector
+denote the continuous trajectory associated with initial condition $x_0$ and parameter vector
 
-$$
+```math
 \theta
 \in
-\mathbb R^p.
-$$
+\mathbb R^p
+```
 
 Two related Jacobian-valued sensitivity objects are useful.
 
 The state-transition matrix is the Jacobian of the flow with respect to the initial condition:
 
-$$
+```math
 \Phi(t,t_0)
 =
 \frac{
-\partial x(t;x_0,\theta)
+\partial x(t; x_0, \theta)
 }{
 \partial x_0
 }
 \in
-\mathbb R^{n\times n}.
-$$
+\mathbb R^{n \times n}
+```
 
 The parameter-sensitivity matrix is the Jacobian of the trajectory with respect to the parameter vector:
 
-$$
+```math
 S_\theta(t)
 =
 \frac{
-\partial x(t;x_0,\theta)
+\partial x(t; x_0, \theta)
 }{
-\partial\theta
+\partial \theta
 }
 \in
-\mathbb R^{n\times p}.
-$$
+\mathbb R^{n \times p}
+```
 
-These are vector- and matrix-valued variational quantities. For a state of dimension \(n\) and parameter vector of dimension \(p\):
+These are vector- and matrix-valued variational quantities. For a state of dimension $n$ and parameter vector of dimension $p$:
 
-- \(\Phi(t,t_0)\) has shape \(n\times n\)
-- \(S_\theta(t)\) has shape \(n\times p\)
-- \(D_xf_q\) has shape \(n\times n\)
-- \(D_\theta f_q\) has shape \(n\times p\)
+- $\Phi(t,t_0)$ has shape $n \times n$
+- $S_\theta(t)$ has shape $n \times p$
+- $D_xf_q$ has shape $n \times n$
+- $D_\theta f_q$ has shape $n \times p$
 
 For a single selected initial-condition direction or parameter direction, the corresponding sensitivity is a vector rather than a full matrix.
 
 ### Smooth trajectory segments
 
-While the discrete mode is fixed at \(q\), the continuous dynamics are
+While the discrete mode is fixed at $q$, the continuous dynamics are
 
-$$
+```math
 \dot{x}(t)
 =
 f_q
@@ -345,41 +348,41 @@ f_q
 x(t),
 t,
 \theta,
-u_q(t)
-\bigr).
-$$
+v_q(t)
+\bigr)
+```
 
 The state Jacobian of the active vector field is
 
-$$
+```math
 D_xf_q
 \bigl(
 x(t),
 t,
 \theta,
-u_q(t)
+v_q(t)
 \bigr)
 \in
-\mathbb R^{n\times n},
-$$
+\mathbb R^{n \times n}
+```
 
 and the parameter Jacobian of the active vector field is
 
-$$
+```math
 D_\theta f_q
 \bigl(
 x(t),
 t,
 \theta,
-u_q(t)
+v_q(t)
 \bigr)
 \in
-\mathbb R^{n\times p}.
-$$
+\mathbb R^{n \times p}
+```
 
 The smooth variational equations are
 
-$$
+```math
 \dot{\Phi}(t,t_0)
 =
 D_xf_q
@@ -387,18 +390,18 @@ D_xf_q
 x(t),
 t,
 \theta,
-u_q(t)
+v_q(t)
 \bigr)
 \Phi(t,t_0),
 \qquad
 \Phi(t_0,t_0)
 =
-I_n,
-$$
+I_n
+```
 
 and
 
-$$
+```math
 \dot{S}_\theta(t)
 =
 D_xf_q
@@ -406,7 +409,7 @@ D_xf_q
 x(t),
 t,
 \theta,
-u_q(t)
+v_q(t)
 \bigr)
 S_\theta(t)
 +
@@ -415,9 +418,9 @@ D_\theta f_q
 x(t),
 t,
 \theta,
-u_q(t)
-\bigr).
-$$
+v_q(t)
+\bigr)
+```
 
 The first equation propagates perturbations in the initial continuous state. The second propagates perturbations in model parameters, including both the effect of a perturbed state and the direct effect of a perturbed parameter on the active vector field.
 
@@ -427,33 +430,33 @@ A perturbation of an initial condition or parameter can change the time at which
 
 For an edge
 
-$$
-e=(q^-,q^+),
-$$
+```math
+e = (q^-,q^+)
+```
 
 a scalar guard
 
-$$
+```math
 g_e(x,t,\theta)=0
-$$
+```
 
 defines a state-triggered transition. For this scalar guard,
 
-$$
+```math
 D_xg_e
 \in
-\mathbb R^{1\times n},
+\mathbb R^{1 \times n},
 \qquad
 D_\theta g_e
 \in
-\mathbb R^{1\times p}
-$$
+\mathbb R^{1 \times p}
+```
 
 are respectively the state and parameter derivatives of the guard function.
 
-If the transition occurs at time \(\tau_e\), then
+If the transition occurs at time $\tau_e$, then
 
-$$
+```math
 g_e
 \bigl(
 x(\tau_e^-),
@@ -461,24 +464,24 @@ x(\tau_e^-),
 \theta
 \bigr)
 =
-0.
-$$
+0
+```
 
 The transition’s reset map is
 
-$$
+```math
 R_e
 \bigl(
 x^-,
 q^-,
 \tau_e,
 \theta
-\bigr),
-$$
+\bigr)
+```
 
 which maps the pre-event continuous state to the post-event continuous state:
 
-$$
+```math
 x^+
 =
 R_e
@@ -487,48 +490,48 @@ x^-,
 q^-,
 \tau_e,
 \theta
-\bigr).
-$$
+\bigr)
+```
 
 The derivative
 
-$$
+```math
 D_xR_e
-$$
+```
 
 is the Jacobian of the reset map with respect to the pre-event continuous state. The reset may be the identity map when only the mode or the mode-dependent continuous input changes.
 
-At a suitable transversal event, a saltation matrix or equivalent event-transition derivative propagates a first-order state perturbation through transition \(e\):
+At a suitable transversal event, a saltation matrix or equivalent event-transition derivative propagates a first-order state perturbation through transition $e$:
 
-$$
+```math
 \delta x^+
 =
-\Xi_e\delta x^-.
-$$
+\Xi_e \delta x^-
+```
 
-The transition derivative \(\Xi_e\) depends on the incoming vector field \(f_{q^-}\), the outgoing vector field \(f_{q^+}\), the guard \(g_e\), the reset map \(R_e\), explicit time or parameter dependence, and the adopted event convention.
+The transition derivative $\Xi_e$ depends on the incoming vector field $f_{q^-}$, the outgoing vector field $f_{q^+}$, the guard $g_e$, the reset map $R_e$, explicit time or parameter dependence, and the adopted event convention.
 
 For parameter sensitivities, a schematic transition update is
 
-$$
+```math
 S_\theta^+
 =
-\Xi_eS_\theta^-
+\Xi_e S_\theta^-
 +
-\Gamma_{e,\theta},
-$$
+\Gamma_{e,\theta}
+```
 
 where
 
-$$
+```math
 \Gamma_{e,\theta}
-$$
+```
 
 is the additive parameter-dependent contribution arising from explicit parameter dependence in the guard, reset map, or transition specification.
 
 Transversality requires the guard to be crossed at nonzero rate:
 
-$$
+```math
 \frac{d}{dt}
 g_e
 \bigl(
@@ -537,12 +540,12 @@ t,
 \theta
 \bigr)
 \neq
-0.
-$$
+0
+```
 
 Near a grazing event, the crossing rate is close to zero:
 
-$$
+```math
 \frac{d}{dt}
 g_e
 \bigl(
@@ -551,8 +554,8 @@ t,
 \theta
 \bigr)
 \approx
-0.
-$$
+0
+```
 
 In that regime, small perturbations can produce large changes in event time, create or remove events, or alter event order. An ordinary smooth derivative may then be poorly conditioned or may not be the appropriate mathematical object.
 
@@ -560,7 +563,7 @@ In that regime, small perturbations can produce large changes in event time, cre
 
 Automatic differentiation can be used to obtain derivatives of smooth ingredients, including
 
-$$
+```math
 D_xf_q,
 \qquad
 D_\theta f_q,
@@ -569,8 +572,8 @@ D_xg_e,
 \qquad
 D_\theta g_e,
 \qquad
-D_xR_e.
-$$
+D_xR_e
+```
 
 It does not by itself settle the derivative of an implicitly defined state-triggered event time, the derivative of an event transition, or behavior at a changed event sequence. In the intended workflow, AD is a component of hybrid variational calculation, not a substitute for hybrid event analysis.
 
@@ -580,43 +583,43 @@ For long, unstable, stiff, or strongly event-sensitive problems, an event-struct
 
 One natural construction partitions the trajectory at scheduled or realized state-triggered transitions:
 
-$$
+```math
 [t_0,\tau_1],
 \quad
 [\tau_1,\tau_2],
 \quad
 \dots,
 \quad
-[\tau_m,T].
-$$
+[\tau_m,T]
+```
 
-Let \(z_i\) denote the shooting state immediately after transition \(i-1\). Let \(q_i^-\) denote the mode active on the segment ending at \(\tau_i\), and let
+Let $z_i$ denote the shooting state immediately after transition $i-1$. Let $q_i^-$ denote the mode active on the segment ending at $\tau_i$, and let
 
-$$
+```math
 e_i
 =
 (q_i^-,q_i^+)
-$$
+```
 
-denote the transition realized at time \(\tau_i\).
+denote the transition realized at time $\tau_i$.
 
-The mode-specific flow on the \(i\)-th smooth segment is denoted
+The mode-specific flow on the $i$-th smooth segment is denoted
 
-$$
+```math
 \varphi_{q_i^-}
 \bigl(
 \tau_i,
 \tau_{i-1}^+;
 z_i,
 \theta
-\bigr).
-$$
+\bigr)
+```
 
-It maps the shooting state \(z_i\), defined immediately after the preceding transition, to the pre-event state immediately before the transition at \(\tau_i\).
+It maps the shooting state $z_i$, defined immediately after the preceding transition, to the pre-event state immediately before the transition at $\tau_i$.
 
 The reset map
 
-$$
+```math
 R_{e_i}
 \bigl(
 x^-,
@@ -624,13 +627,13 @@ q_i^-,
 \tau_i,
 \theta
 \bigr)
-$$
+```
 
-is the reset equation associated with the realized edge \(e_i\). It maps the pre-event continuous state to the post-event state. It may be the identity map if the transition changes only the active mode or a mode-dependent input.
+is the reset equation associated with the realized edge $e_i$. It maps the pre-event continuous state to the post-event state. It may be the identity map if the transition changes only the active mode or a mode-dependent input.
 
 A schematic event-aware connection constraint is therefore
 
-$$
+```math
 c_i(z_i,z_{i+1},\theta)
 =
 R_{e_i}
@@ -649,28 +652,28 @@ q_i^-,
 -
 z_{i+1}
 =
-0.
-$$
+0
+```
 
 The next shooting state is
 
-$$
+```math
 z_{i+1}
 =
-x(\tau_i^+),
-$$
+x(\tau_i^+)
+```
 
 and the mode after the transition is
 
-$$
+```math
 q_i^+
 =
-\operatorname{target}(e_i).
-$$
+\operatorname{target}(e_i)
+```
 
-For a prescribed event time, \(\tau_i\) is known. For a state-triggered transition, \(\tau_i\) is determined implicitly by
+For a prescribed event time, $\tau_i$ is known. For a state-triggered transition, $\tau_i$ is determined implicitly by
 
-$$
+```math
 g_{e_i}
 \!\left(
 \varphi_{q_i^-}
@@ -684,26 +687,26 @@ z_i,
 \theta
 \right)
 =
-0.
-$$
+0
+```
 
 The Jacobian of the connection constraint must include derivatives of the smooth flow and the dependence of event time and post-event state on shooting variables and parameters:
 
-$$
+```math
 \frac{
-\partial\tau_i
+\partial \tau_i
 }{
 \partial z_i
 },
 \qquad
 \frac{
-\partial\tau_i
+\partial \tau_i
 }{
-\partial\theta
-}.
-$$
+\partial \theta
+}
+```
 
-A saltation matrix \(\Xi_{e_i}\), or an equivalent derivative of the event-defined transition map, is the natural hybrid-system object for this connection.
+A saltation matrix $\Xi_{e_i}$, or an equivalent derivative of the event-defined transition map, is the natural hybrid-system object for this connection.
 
 A shooting discretization need not use a node at every event in every application. However, any segment that crosses state-triggered transitions must be treated as an event-aware flow, and its derivative must incorporate those transitions correctly. For the first analytic benchmark, placing segment boundaries at each transition gives the clearest formulation.
 
@@ -776,17 +779,17 @@ The central validation target is a hybrid model with independently derived analy
 
 For a selected parameter or initial-condition direction, the benchmark should make it possible to obtain analytically
 
-$$
+```math
 \tau(\theta),
 \qquad
 \frac{d\tau}{d\theta},
 \qquad
 x(T;\theta),
 \qquad
-\frac{d x(T;\theta)}{d\theta},
-$$
+\frac{d x(T;\theta)}{d\theta}
+```
 
-where \(\tau(\theta)\) is a state-triggered event time and \(T\) is a terminal time after the transition.
+where $\tau(\theta)$ is a state-triggered event time and $T$ is a terminal time after the transition.
 
 The benchmark should separately test:
 
@@ -799,9 +802,9 @@ The benchmark should separately test:
 
 The first exact state-triggered benchmark should be deliberately low dimensional and analytically transparent. Biological realism is not its criterion; an independently known hybrid derivative is.
 
-For a computed sensitivity \(S_{\mathrm{computed}}(T)\) and analytic reference \(S_{\mathrm{exact}}(T)\), a representative normalized error measure is
+For a computed sensitivity $S_{\mathrm{computed}}(T)$ and analytic reference $S_{\mathrm{exact}}(T)$, a representative normalized error measure is
 
-$$
+```math
 \frac{
 \left\|
 S_{\mathrm{computed}}(T)
@@ -815,8 +818,8 @@ S_{\mathrm{exact}}(T)
 S_{\mathrm{exact}}(T)
 \right\|
 \right)
-}.
-$$
+}
+```
 
 Interpretation of that error requires the numerical tolerances, event-location behavior, and event sequence to be reported.
 
@@ -824,41 +827,41 @@ Interpretation of that error requires the numerical tolerances, event-location b
 
 Finite differences are neither the project’s primary sensitivity method nor its validation oracle.
 
-For an output \(J(\theta)\), a forward difference is
+For an output $J(\theta)$, a forward difference is
 
-$$
+```math
 \frac{
 J(\theta+h)-J(\theta)
 }{
 h
-}.
-$$
+}
+```
 
 In a smooth Float64 calculation, the balance between truncation and round-off error often imposes a practical lower scale related to
 
-$$
-\sqrt{\epsilon_{\mathrm{mach}}},
-$$
+```math
+\sqrt{\epsilon_{\mathrm{mach}}}
+```
 
-which is roughly \(10^{-8}\) in relative scale, before accounting for ODE-solution and event-location error.
+which is roughly $10^{-8}$ in relative scale, before accounting for ODE-solution and event-location error.
 
-Hybrid models introduce another constraint. The perturbation \(h\) must also remain small enough to preserve the relevant event structure: event existence, crossing branch, event order, reset sequence, and mode sequence. Schematically, a useful quotient would require
+Hybrid models introduce another constraint. The perturbation $h$ must also remain small enough to preserve the relevant event structure: event existence, crossing branch, event order, reset sequence, and mode sequence. Schematically, a useful quotient would require
 
-$$
+```math
 h_{\mathrm{numerical}}
 \lesssim
 |h|
 \lesssim
-h_{\mathrm{structure}}.
-$$
+h_{\mathrm{structure}}
+```
 
 The interval may be empty:
 
-$$
+```math
 h_{\mathrm{structure}}
 \lesssim
-h_{\mathrm{numerical}}.
-$$
+h_{\mathrm{numerical}}
+```
 
 This can occur near grazing events or near boundaries where a parameter perturbation creates, removes, or reorders events. A finite-difference sweep may therefore show no stable accuracy plateau even where a hybrid derivative is meaningful within a fixed local event sequence.
 
@@ -920,7 +923,7 @@ The directions below are not current implementation commitments. Each depends on
 
 A later workflow may fit mechanistic hybrid models to longitudinal PK, biomarker, disease-burden, toxicity, or related data through an observation model such as
 
-$$
+```math
 y_j
 =
 h\bigl(
@@ -929,10 +932,10 @@ q(t_j),
 \theta
 \bigr)
 +
-\varepsilon_j.
-$$
+\varepsilon_j
+```
 
-Here \(y_j\) is an observation at time \(t_j\), \(h\) maps continuous state and treatment mode to the observation, and \(\varepsilon_j\) represents noise or discrepancy.
+Here $y_j$ is an observation at time $t_j$, $h$ maps continuous state and treatment mode to the observation, and $\varepsilon_j$ represents noise or discrepancy.
 
 The issue is not simply ODE fitting. Parameters may alter event time, event count, event order, cumulative exposure, and the mode active at observation times. A future implementation would need to establish where hybrid variational derivatives support likelihood-based calibration or optimization, and where event-structure changes require regime-aware, nonsmooth, or derivative-free approaches.
 
@@ -942,7 +945,7 @@ A mechanistic hybrid model may represent known PK/PD, physiological, or treatmen
 
 One possible continuous-dynamics formulation is
 
-$$
+```math
 \dot{x}(t)
 =
 f_{q(t)}
@@ -950,7 +953,7 @@ f_{q(t)}
 x(t),
 t,
 \theta,
-u_{q(t)}(t)
+v_{q(t)}(t)
 \bigr)
 +
 r_\phi
@@ -958,15 +961,15 @@ r_\phi
 x(t),
 q(t),
 t,
-u_{q(t)}(t)
-\bigr),
-$$
+v_{q(t)}(t)
+\bigr)
+```
 
-where \(r_\phi\) is a learned residual model.
+where $r_\phi$ is a learned residual model.
 
 A more conservative alternative is an observation residual:
 
-$$
+```math
 y_j
 =
 h\bigl(
@@ -982,28 +985,28 @@ q(t_j),
 t_j
 \bigr)
 +
-\varepsilon_j.
-$$
+\varepsilon_j
+```
 
 These extensions should retain explicit event semantics. They should distinguish known scheduled interventions from learned effects, explicit guards from learned discontinuities, mechanistic parameters from residual-model parameters, predictive performance from mechanistic identifiability, and interpolation within observed regimes from extrapolation across changed treatment policies.
 
 ### Mixed-effects and population hybrid models
 
-A pharmacometrics-oriented extension could represent between-subject variation in continuous parameters, treatment thresholds, observation models, or adherence processes. For subject \(i\),
+A pharmacometrics-oriented extension could represent between-subject variation in continuous parameters, treatment thresholds, observation models, or adherence processes. For subject $i$,
 
-$$
+```math
 \theta_i
 =
 \Theta(\eta_i,\beta),
 \qquad
 \eta_i
 \sim
-\mathcal N(0,\Omega),
-$$
+\mathcal N(0,\Omega)
+```
 
 with a subject-specific hybrid trajectory
 
-$$
+```math
 \dot{x}_i(t)
 =
 f_{q_i(t)}
@@ -1011,9 +1014,9 @@ f_{q_i(t)}
 x_i(t),
 t,
 \theta_i,
-u_{q_i(t)}(t)
-\bigr).
-$$
+v_{q_i(t)}(t)
+\bigr)
+```
 
 This should follow a validated deterministic single-subject workflow. Population inference adds the statistical difficulties of random effects, partial observability, sparse irregular sampling, and potential variation in discrete treatment transitions.
 
@@ -1061,7 +1064,7 @@ After analytic validation and basic calibration, the framework could be used to 
 
 A generic objective could combine efficacy and safety:
 
-$$
+```math
 \mathcal J(\theta,\pi)
 =
 \Phi\bigl(
@@ -1073,7 +1076,7 @@ q(T)
 L\bigl(
 x(t),
 q(t),
-u_{q(t)}(t)
+v_{q(t)}(t)
 \bigr)\,dt
 +
 \sum_k
@@ -1082,10 +1085,10 @@ x(\tau_k^-),
 x(\tau_k^+),
 q(\tau_k^-),
 q(\tau_k^+)
-\bigr),
-$$
+\bigr)
+```
 
-where \(\pi\) is a parameterized treatment policy and \(\tau_k\) are realized event times.
+where $\pi$ is a parameterized treatment policy and $\tau_k$ are realized event times.
 
 Gradient-based optimization may be appropriate inside a fixed transversal event regime. It may become unreliable when a step changes event count, event ordering, or the existence of a treatment hold. Any future optimization work should therefore assess regime-aware, nonsmooth, or derivative-free alternatives rather than assume a globally smooth objective.
 
@@ -1137,3 +1140,4 @@ Feedback is especially welcome on:
 - `HybridSystems.jl` documentation and repository. General hybrid-system definitions and interfaces in Julia, including hybrid automata and switched systems.
 
 - SciML documentation for callbacks, forward sensitivity analysis, and multiple shooting.
+```
