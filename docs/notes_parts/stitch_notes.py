@@ -18,10 +18,10 @@ parts = [
 ]
 
 
-source_dir = Path("docs/readme-parts")
+source_dir = Path("docs/notes-parts")
 content = "\n\n".join(
     (source_dir / part).read_text(encoding="utf-8").rstrip()
     for part in parts
 )
 
-Path("README.md").write_text(content + "\n", encoding="utf-8")
+Path("docs/notes-parts/NOTES.md").write_text(content + "\n", encoding="utf-8")
