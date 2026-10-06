@@ -17,7 +17,7 @@ parts = [
     "12-labs-and-modeling-limits-reading.md",
 ]
 
-source_dir = Path("docs/notes_parts")
+source_dir = Path("../docs/notes_parts")
 
 content = "\n\n".join(
     (source_dir / part).read_text(encoding="utf-8").rstrip()

@@ -1,4 +1,8 @@
-# Project status
+# Software implementation status
+
+> This document tracks the software implementation and verification workflow.
+> Its milestones are not the development plan or completion status of the
+> first paper. See [README.md](README.md) for the current paper plan.
 
 **Last updated:** 2026-09-14
 
@@ -112,7 +116,7 @@ step-size sweep only as a controlled diagnostic.
 Its purpose is to illustrate that a perturbation must be both:
 
 - large enough to overcome numerical error, and
-- small enough to preserve event existence, event branch, event order, reset sequence, and mode sequence}.
+- small enough to preserve event existence, event branch, event order, reset sequence, and mode sequence.
 
 In hybrid systems, that usable interval may be absent. Finite differences are
 not the primary sensitivity method or the validation oracle.
@@ -167,4 +171,4 @@ following regimes:
 
 ## Licensing
 
-Licensing is under review. No license is granted at this stage
+Licensing is under review. No license is granted at this stage.
